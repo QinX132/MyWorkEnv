@@ -1,0 +1,14 @@
+#!/bin/sh
+for dir in $(ls .)
+do
+    if [ -d $dir ]; then
+        pushd $dir > /dev/null
+        cmd="git checkout $1"
+        printf "%-16s: %s\n" $dir "$cmd"
+        $cmd
+        popd > /dev/null
+    fi
+done  
+
+
+

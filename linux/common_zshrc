@@ -1,0 +1,31 @@
+# Path to your oh-my-zsh installation.
+export ZSH=${ZSHRC_DIR}/oh-my-zsh
+
+# Set name of the theme to load.
+# Look in ~/.oh-my-zsh/themes/
+# Optionally, if you set this to "random", it'll load a random theme each
+# time that oh-my-zsh is loaded.
+ZSH_THEME="muse"
+
+# Which plugins would you like to load? (plugins can be found in ~/.oh-my-zsh/plugins/*)
+# Custom plugins may be added to ~/.oh-my-zsh/custom/plugins/
+# Example format: plugins=(rails git textmate ruby lighthouse)
+# Add wisely, as too many plugins slow down shell startup.
+plugins=(git)
+
+# User configuration
+PATH=$HOME/bin:/usr/local/bin:$PATH:$TOOL_DIR:$LOCAL_TOOL_DIR
+export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
+source $ZSH/oh-my-zsh.sh
+
+# personal define alias
+DISABLE_AUTO_UPDATE=true
+
+# 查看和设置终端为256色
+#    $ tput colors
+#    256
+#    $ echo $TERM
+#    xterm-256color
+if [ "$TERM" = "xterm" ]; then
+    export TERM=xterm-256color
+fi

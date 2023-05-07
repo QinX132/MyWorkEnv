@@ -1,0 +1,13 @@
+#!/bin/sh
+for dir in $(ls .)
+do
+    if [ -d $dir ]; then
+        pushd $dir > /dev/null
+        echo "########## $dir ##########"
+        git stash clear
+        popd > /dev/null
+    fi
+done  
+
+
+

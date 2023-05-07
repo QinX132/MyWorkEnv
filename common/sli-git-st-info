@@ -1,0 +1,14 @@
+#!/bin/sh
+for dir in $(ls .)
+do
+    if [ -d $dir ]; then
+        pushd $dir > /dev/null
+        echo "########## $dir ##########"
+        git status
+        popd > /dev/null
+        echo
+    fi
+done  
+
+
+

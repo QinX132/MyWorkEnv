@@ -1,0 +1,15 @@
+#!/bin/sh
+for dir in $(ls .)
+do
+    if [ -d $dir ]; then
+        pushd $dir > /dev/null
+        echo "########## $dir ##########"
+        git remote prune origin
+        git branch --merged |grep -v "\*" | grep -v "release" |xargs git branch -D
+        git branch --no-merged | grep -iv "Branch" |xargs git branch -D
+        popd > /dev/null
+    fi
+done  
+
+
+

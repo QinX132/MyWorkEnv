@@ -1,0 +1,14 @@
+pwd=`pwd`
+filelist=`ls $dir`
+
+cd ~/branch
+
+for((i=1;i<=5;i++))
+do
+    cd workspace$i
+    pwd
+    sli-git-branch-name
+    echo
+    cd ..
+done
+

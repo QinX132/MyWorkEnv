@@ -1,0 +1,80 @@
+#!/bin/bash
+
+REPO_LIST=(
+    acsname         git@git.appexnetworks.com:LightWAN/acsname.git
+    agent           git@git.appexnetworks.com:LightWAN/agent.git
+    basecodesrc2    git@git.appexnetworks.com:LightWAN/basecodesrc2.git
+    docker_cpe      git@git.appexnetworks.com:LightWAN/docker_cpe.git
+    ipset           git@git.appexnetworks.com:LightWAN/ipset.git
+    librtc          git@git.appexnetworks.com:LightWAN/librtc.git
+    LWConn          git@git.appexnetworks.com:LightWAN/LWConn.git
+    psbc            git@git.appexnetworks.com:LightWAN/psbc.git
+    third_party     git@git.appexnetworks.com:LightWAN/third_party/third_party.git
+    android-device  git@git.appexnetworks.com:LightWAN/android-device.git
+    shareDoc        git@git.appexnetworks.com:LightWAN/sharedoc.git
+    lw_communication git@git.appexnetworks.com:LightWAN/lw_communication.git
+    )
+
+download_repo()
+{
+    repo_name=$1
+    repo_path=$2
+    repo_branch="master"
+
+    echo "######### start download ($repo_name:$repo_branch) #####################"
+    git clone $repo_path -b $repo_branch
+}
+
+search_and_download_repo()
+{
+    target_repo_name=$1
+    repo_list_len=${#REPO_LIST[@]}
+
+    for((i=0;i<repo_list_len;i+=2))
+    do
+        repo_name=${REPO_LIST[i]}
+        repo_branch=${REPO_LIST[i+1]}
+        if [ $target_repo_name = $repo_name ]
+        then
+            download_repo $repo_name $repo_branch
+            return
+        fi
+    done
+
+    echo "$$$$$$$$$$$$$$$ can't find this repo:$target_repo_name $$$$$$$$$$$$$$"
+}
+
+download_repo_param_list()
+{
+    for branch in $@
+    do 
+        search_and_download_repo $branch
+    done
+}
+
+download_repo_all()
+{
+    repo_list_len=${#REPO_LIST[@]}
+
+    for((i=0;i<repo_list_len;i+=2))
+    do
+        repo_name=${REPO_LIST[i]}
+        repo_branch=${REPO_LIST[i+1]}
+        download_repo $repo_name $repo_branch
+    done
+}
+
+if [[ $1 = "all" ]]
+then
+    download_repo_all
+elif [[ $1 = "test" ]]
+then
+    echo "test"
+else 
+    download_repo_param_list $@
+fi
+
+
+
+
+

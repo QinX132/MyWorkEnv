@@ -1,0 +1,17 @@
+#!/bin/sh
+for dir in $(ls .)
+do
+    if [ -d $dir ]; then
+        pushd $dir > /dev/null
+        echo "###################" $dir "(branch:" $(git rev-parse --abbrev-ref HEAD) ")" "################################"
+        git pull
+        echo
+        popd > /dev/null
+        echo
+        echo
+        echo
+    fi
+done  
+
+
+
