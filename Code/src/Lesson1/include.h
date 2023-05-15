@@ -35,7 +35,7 @@
 
 typedef struct _MY_TEST_MSG_HEAD{
     uint32_t Id;
-    uint32_t TimeStamp;
+    uint64_t TimeStamp;
     uint32_t MsgContentLen;
 }MY_TEST_MSG_HEAD;
 
