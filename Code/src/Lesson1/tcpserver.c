@@ -80,7 +80,7 @@ int main(void)
                 goto CommonReturn;
             }
         }
-        printf("Id=%u, TimeStamp=%u, MsgContentLen=%u\n", msgHead.Id, msgHead.TimeStamp, msgHead.MsgContentLen);
+        printf("Id=%u, TimeStamp=%llu, MsgContentLen=%u\n", msgHead.Id, msgHead.TimeStamp, msgHead.MsgContentLen);
 
         msgCont = (MY_TEST_MSG_CONT *)malloc(msgHead.MsgContentLen);
         memset(msgCont, 0, msgHead.MsgContentLen);

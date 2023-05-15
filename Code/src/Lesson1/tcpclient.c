@@ -7,6 +7,8 @@
 #include <netinet/ip.h>
 #include "include.h"
 
+static uint32_t currentSessionId = 0;
+
 int main(
     int argc,
     char *argv[]
@@ -15,7 +17,8 @@ int main(
 	int clientFd = -1;
 	unsigned int serverIp = 0;
 	struct sockaddr_in serverAddr = {0};
-	socklen_t socklen = 0;  	
+	socklen_t socklen = 0; 
+    struct timeval tv;
  
 	clientFd = socket(AF_INET, SOCK_STREAM, 0);
 	if(0 > clientFd)
@@ -52,10 +55,11 @@ int main(
         memset(msgToSend, 0 ,sizeof(msgToSend));
 
         msgToSend->Head.Id = 1;
-        msgToSend->Head.TimeStamp = 1;
+        gettimeofday(&tv, NULL);
+        msgToSend->Head.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
         msgToSend->Head.MsgContentLen = sizeof(MY_TEST_MSG_CONT) + stringLen;
         msgToSend->Cont.MagicVer = 0xff;
-        msgToSend->Cont.SessionId = 0xff;
+        msgToSend->Cont.SessionId = currentSessionId ++;
         memcpy(msgToSend->Cont.VarLenCont, buf, stringLen);
 
         int sendLen = sizeof(MY_TEST_MSG) + stringLen;
