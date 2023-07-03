@@ -21,7 +21,7 @@ TARGET = tcpclient tcpserver
 all: $(TARGET)
 
 tcpclient:
-	$(CC) $(CFLAGS) $(LDFLAGS) $(SVR_SRC_FILE) -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(CLT_SRC_FILE) -o $@
 
 tcpserver:
 	$(CC) $(CFLAGS) $(LDFLAGS) $(SVR_SRC_FILE) -o $@

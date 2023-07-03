@@ -4,12 +4,13 @@
 
 #define MY_TEST_MAX_EVENTS                                      1024
 #define MY_TEST_SERVER_ROLE_NAME                                "TcpServer"
+#define MY_TEST_SERVER_TID_FILE                                 "TcpServer.tid"
 
 static int sg_ServerListenFd[MY_TEST_MAX_CLIENT_NUM_PER_SERVER + 1] = {0};
 static int sg_MsgId = 0;
 
-int
-CreateServerFd(
+static int
+_Server_CreateFd(
     void
     )
 {
@@ -94,7 +95,7 @@ _Server_WorkerFunc(
     MY_TEST_MSG *msg = NULL;
     UNUSED(arg);
 
-    serverFd = CreateServerFd();
+    serverFd = _Server_CreateFd();
     if (0 > serverFd)
     {
     	LogErr("Create server socket failed");
@@ -191,17 +192,18 @@ main(
     pthread_attr_t attr;
     BOOL attrInited = FALSE;
 
-    ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_SERVER_ROLE_NAME, strlen(MY_TEST_SERVER_ROLE_NAME));
+    ret = LogModuleInit("Server.log", MY_TEST_SERVER_ROLE_NAME, strlen(MY_TEST_SERVER_ROLE_NAME));
     if (ret)
     {
         printf("Init log failed!");
         goto CommonReturn;
     }
     MsgModuleInit();
+    LogInfo("Server modules init success!");
 
     pthread_attr_init(&attr);
     attrInited = TRUE;
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    //pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     ret = pthread_create(&thread, &attr, _Server_WorkerFunc, NULL);
     if (ret) 
@@ -209,7 +211,8 @@ main(
         LogErr("Failed to create thread");
         return ret;
     }
-    
+
+    LogInfo("Joining thread: Server Worker Func");
     pthread_join(thread, NULL);
     
 CommonReturn:
@@ -217,5 +220,6 @@ CommonReturn:
         pthread_attr_destroy(&attr);
     MsgModuleExit();
     LogModuleExit();
+    LogInfo("Server exited!");
     return ret;
 }

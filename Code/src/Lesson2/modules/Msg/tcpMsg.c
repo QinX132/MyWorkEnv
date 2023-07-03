@@ -167,6 +167,7 @@ NewMsg(
 {
     MY_TEST_MSG* retMsg = NULL;
     retMsg = (MY_TEST_MSG*)malloc(sizeof(MY_TEST_MSG));
+    memset(retMsg, 0, sizeof(MY_TEST_MSG));
     return retMsg;
 }
 
