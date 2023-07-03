@@ -1,0 +1,11 @@
+ifeq ($(FEATURE_LOG),y)
+COMMON_CFLAGS += -DFEATURE_LOG
+COMMON_CFLAGS += -I $(WORK_ROOT)/modules/Log/
+COMMON_SRC_FILE += $(WORK_ROOT)/modules/Log/myLogIO.c
+endif
+
+ifeq ($(FEATURE_MSG),y)
+COMMON_CFLAGS += -DFEATURE_MSG
+COMMON_CFLAGS += -I $(WORK_ROOT)/modules/Msg/
+COMMON_SRC_FILE += $(WORK_ROOT)/modules/Msg/tcpMsg.c
+endif

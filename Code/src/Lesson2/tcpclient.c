@@ -1,16 +1,12 @@
-#include <stdio.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
 #include "include.h"
+#include "tcpMsg.h"
+#include "myLogIO.h"
 
 static uint32_t currentSessionId = 0;
+#define MY_TEST_CLIENT_ROLE_NAME                                "TcpClient"
 
-int RecvMsgs(
+int 
+RecvMsgs(
     int Fd
     )
 {
@@ -84,43 +80,38 @@ CommonReturn:
     return ret;
 }
 
-int main(
-    int argc,
-    char *argv[]
+void*
+ClientWorkerFunc(
+    void* arg
     )
 {
-	int clientFd = -1;
-	unsigned int serverIp = 0;
-	struct sockaddr_in serverAddr = {0};
-	socklen_t socklen = 0; 
+    int clientFd = -1;
+    unsigned int serverIp = 0;
+    struct sockaddr_in serverAddr = {0};
+    socklen_t socklen = 0; 
     struct timeval tv;
 
-    if (argc != 2)
+ 
+    clientFd = socket(AF_INET, SOCK_STREAM, 0);
+    if(0 > clientFd)
     {
-        printf("Usage: ./tcpclient ip\n");
+        printf("Create socket failed\n");
         goto CommonReturn;
     }
- 
-	clientFd = socket(AF_INET, SOCK_STREAM, 0);
-	if(0 > clientFd)
-	{
-		printf("Create socket failed\n");
-		goto CommonReturn;
-	}
     
     int32_t reuseable = 1; // set port reuseable when fd closed
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
 
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(MY_TEST_PORT);
-	inet_pton(AF_INET, argv[1], &serverIp);
-	serverAddr.sin_addr.s_addr=serverIp;
-	
-	if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
-	{
-		printf("Connect failed\n");
-		goto CommonReturn;
-	}
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(MY_TEST_PORT);
+    inet_pton(AF_INET, argv[1], &serverIp);
+    serverAddr.sin_addr.s_addr=serverIp;
+
+    if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
+    {
+        printf("Connect failed\n");
+        goto CommonReturn;
+    }
     printf("Connect success\n");
 
     MY_TEST_MSG *msgToSend = NULL;
@@ -164,7 +155,7 @@ int main(
             }
         }
 
-        RecvMsgs(clientFd);
+        RecvMsg(clientFd);
 
         free(msgToSend);
         msgToSend = NULL;
@@ -176,8 +167,47 @@ int main(
 
 CommonReturn:
     if (clientFd != -1)
-	    close(clientFd);//关闭socket
+        close(clientFd);
     if (msgToSend)
         free(msgToSend);
-	return 0;
+}
+
+int main(
+    int argc,
+    char *argv[]
+    )
+{
+    int ret = 0;
+    pthread_t thread;
+    int ret = 0;
+    pthread_attr_t attr;
+    BOOL attrInited = FALSE;
+    if (argc != 2)
+    {
+        printf("Usage: ./tcpclient ip\n");
+        goto CommonReturn;
+    }
+
+    ret = MyLogInit(MY_TEST_LOG_FILE, MY_TEST_CLIENT_ROLE_NAME, strlen(MY_TEST_CLIENT_ROLE_NAME));
+    if (ret)
+    {
+        printf("Init log failed!");
+        goto CommonReturn;
+    }
+
+    pthread_attr_init(&attr);
+    attrInited = TRUE;
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    ret = pthread_create(&thread, &attr, ClientWorkerFunc, NULL);
+    if (ret) 
+    {
+        LogErr("Failed to create thread");
+        return ret;
+    }
+    
+    pthread_join(thread, NULL);
+
+CommonReturn:
+    return ret;
 }

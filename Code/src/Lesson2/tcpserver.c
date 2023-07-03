@@ -1,30 +1,20 @@
-#include <stdio.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <sys/time.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <errno.h>
 #include "include.h"
+#include "myLogIO.h"
+#include "tcpMsg.h"
 
-#define MY_TEST_MAX_EVENTS          1024 
+#define MY_TEST_MAX_EVENTS                                      1024
+#define MY_TEST_SERVER_ROLE_NAME                                "TcpServer"
 
 static int sg_ServerListenFd[MY_TEST_MAX_CLIENT_NUM_PER_SERVER + 1] = {0};
 static int sg_MsgId = 0;
 
-int CreateServerFd(
+int
+CreateServerFd(
     void
     )
 {
     int serverFd = -1;
-	serverFd = socket(AF_INET, SOCK_STREAM, 0);     //create socket
+    serverFd = socket(AF_INET, SOCK_STREAM, 0);     //create socket
 
     int32_t reuseable = 1; // set port reuseable when fd closed
     (void)setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));    // set reuseable
@@ -33,197 +23,110 @@ int CreateServerFd(
     nonBlock |= O_NONBLOCK;
     fcntl(serverFd, F_SETFL, nonBlock);         // set fd nonBlock
 
-	struct sockaddr_in localAddr = {0};
-	localAddr.sin_family = AF_INET;
-	localAddr.sin_port = htons(MY_TEST_PORT);
-	localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
- 
-	if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
-	{
-		printf("Bind failed\n");
-		goto CommonReturn;
-	}
-	printf("Bind serverFd: %d\n", serverFd);
+    struct sockaddr_in localAddr = {0};
+    localAddr.sin_family = AF_INET;
+    localAddr.sin_port = htons(MY_TEST_PORT);
+    localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
 
-	if(0 > listen(serverFd, MY_TEST_MAX_CLIENT_NUM_PER_SERVER))
-	{
-		printf("Listen failed\n");
-		goto CommonReturn;
-	}
+    if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
+    {
+    	LogErr("Bind failed");
+    	goto CommonReturn;
+    }
+    LogErr("Bind serverFd: %d", serverFd);
+
+    if(0 > listen(serverFd, MY_TEST_MAX_CLIENT_NUM_PER_SERVER))
+    {
+    	LogErr("Listen failed");
+    	goto CommonReturn;
+    }
 
 CommonReturn:
     return serverFd;
 }
 
-int HandleMsgs(
+static
+int 
+_Server_HandleMsg(
     int Fd,
-    MY_TEST_MSG_HEAD MsgHead,
-    MY_TEST_MSG_CONT *MsgCont
+    MY_TEST_MSG Msg
     )
 {
     int ret = 0;
-    MY_TEST_MSG *replyMsg = NULL;
-    int replyLen = sizeof(MY_TEST_MSG) + MY_TEST_MSX_CONTENT_LEN;
-    int currentLen = 0;
-    int sendRet = 0;
-    UNUSED(MsgHead);
-
-    replyMsg = (MY_TEST_MSG *)malloc(replyLen);
-
-    replyMsg->Head.Id = sg_MsgId ++;
+    MY_TEST_MSG *replyMsg = NewMsg();
     struct timeval tv;
-    gettimeofday(&tv, NULL);
-    replyMsg->Head.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
-    replyMsg->Head.MsgContentLen = sizeof(MY_TEST_MSG_CONT) + MY_TEST_MSX_CONTENT_LEN;
 
-    replyMsg->Cont.MagicVer = MsgCont->MagicVer;
-    replyMsg->Cont.SessionId = MsgCont->SessionId;
-    memcpy(replyMsg->Cont.VarLenCont, "reply", strlen("reply"));
-
-    for(; currentLen < replyLen;)
+    if (!replyMsg)
     {
-        sendRet = send(Fd, ((char*)replyMsg) + currentLen, replyLen - currentLen, 0);
-        if (sendRet > 0)
-        {
-            currentLen += sendRet;
-        }
-        else if (sendRet == 0)
-        {
-            goto CommonReturn;
-        }
-        else
-        {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                break;
-            }
-            printf("%d:%s\n",errno,strerror(errno));
-            goto CommonReturn;
-        }
-    }
-
-CommonReturn:
-    if (MsgCont)
-        free(MsgCont);
-    if (replyMsg)
-        free(replyMsg);
-    return ret;
-}
-
-int RecvMsgs(
-    int Fd
-    )
-{
-    int ret = 0;
-    MY_TEST_MSG_HEAD msgHead;
-    MY_TEST_MSG_CONT *msgCont = NULL;
-    int recvLen = sizeof(MY_TEST_MSG_HEAD);
-    int currentLen = 0;
-    int recvRet = 0;
-
-    memset(&msgHead, 0, sizeof(msgHead));
-    for(; currentLen < recvLen;)
-    {
-        recvRet = recv(Fd, ((char*)&msgHead) + currentLen, recvLen - currentLen, 0);
-        if (recvRet > 0)
-        {
-            currentLen += recvRet;
-        }
-        else if (recvRet == 0)
-        {
-            goto CommonReturn;
-        }
-        else
-        {
-            if (errno == EWOULDBLOCK || errno == EAGAIN)
-            {
-                printf("recv ends!\n");
-                goto CommonReturn;
-            }
-            else
-            {
-                ret = -errno;
-                printf("%d:%s\n",errno,strerror(errno));
-                goto CommonReturn;
-            }
-        }
-    }
-    printf("Id=%u, TimeStamp=%llu, MsgContentLen=%u\n", msgHead.Id, msgHead.TimeStamp, msgHead.MsgContentLen);
-
-    msgCont = (MY_TEST_MSG_CONT *)malloc(msgHead.MsgContentLen);
-    memset(msgCont, 0, msgHead.MsgContentLen);
-    recvLen = msgHead.MsgContentLen;
-    currentLen = 0;
-    recvRet = 0;
-    for(; currentLen < recvLen;)
-    {
-        recvRet = recv(Fd, ((char*)msgCont) + currentLen, recvLen - currentLen, 0);
-        if (recvRet > 0)
-        {
-            currentLen += recvRet;
-        }
-        else if (recvRet == 0)
-        {
-            goto CommonReturn;
-        }
-        else
-        {
-            printf("%d:%s\n",errno,strerror(errno));
-            goto CommonReturn;
-        }
-    }
-    printf("MagicVer=%u, SessionId=%u, VarLenCont=%s\n", msgCont->MagicVer, msgCont->SessionId, msgCont->VarLenCont);
-    
-    HandleMsgs(Fd, msgHead, msgCont);
-
-    if (strcasecmp(msgCont->VarLenCont, MY_TEST_DISCONNECT_STRING) == 0)
-    {
-        ret = -EHOSTDOWN;
+        ret = -ENOMEM;
         goto CommonReturn;
     }
 
+    gettimeofday(&tv, NULL);
+    replyMsg->Head.MsgId = sg_MsgId ++;
+    replyMsg->Head.MsgContentLen = sizeof(MY_TEST_MSG_CONT) + MY_TEST_MSX_CONTENT_LEN;
+    replyMsg->Head.MagicVer = Msg.Head.MagicVer;
+    replyMsg->Head.SessionId = Msg.Head.SessionId;
+    memcpy(replyMsg->Cont.VarLenCont, "reply", strlen("reply"));
+    replyMsg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
+
+    ret = SendMsg(Fd, *replyMsg);
+    if (ret)
+    {
+        LogErr("Send msg failed");
+    }
+
 CommonReturn:
+    if (replyMsg)
+    {
+        FreeMsg(replyMsg);
+    }
     return ret;
 }
 
-int main(void)
+static void*
+_Server_WorkerFunc(
+    void* arg
+    )
 {
+    int serverFd = -1;
     int ret = 0;
-	int serverFd = -1;
+    MY_TEST_MSG *msg = NULL;
+    UNUSED(arg);
 
     serverFd = CreateServerFd();
-	if (0 > serverFd)
-	{
-		printf("Create server socket failed\n");
-		goto CommonReturn;
-	}
+    if (0 > serverFd)
+    {
+    	LogErr("Create server socket failed");
+    	goto CommonReturn;
+    }
 
     int epoll_fd = -1;
     int event_count = 0;
     struct epoll_event event, waitEvents[MY_TEST_MAX_EVENTS];
 
     epoll_fd = epoll_create1(0);
-	if (0 > epoll_fd)
-	{
-		printf("Create epoll socket failed %d\n", errno);
-		goto CommonReturn;
-	}
+    if (0 > epoll_fd)
+    {
+    	LogErr("Create epoll socket failed %d", errno);
+    	goto CommonReturn;
+    }
     event.events = EPOLLIN | EPOLLET;
     event.data.fd = serverFd;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serverFd, &event))
     {
-		printf("Add to epoll socket failed %d\n", errno);
-		goto CommonReturn;
+    	LogErr("Add to epoll socket failed %d", errno);
+    	goto CommonReturn;
     }
 
-    int i = 0;
+    int loop = 0;
     /* recv */
     while (1)
     {
         event_count = epoll_wait(epoll_fd, waitEvents, MY_TEST_MAX_EVENTS, 0);
-        for(i = 0; i < event_count; i++)
+        for(loop = 0; loop < event_count; loop ++)
         {
-            if (waitEvents[i].data.fd == serverFd)
+            if (waitEvents[loop].data.fd == serverFd)
             {
                 int tmpClientFd = -1;
                 struct sockaddr tmpClientaddr;
@@ -241,28 +144,78 @@ int main(void)
                     sg_ServerListenFd[sg_ServerListenFd[0]] = tmpClientFd;
                 }
             }
-            else if (waitEvents[i].events & EPOLLIN)
+            else if (waitEvents[loop].events & EPOLLIN)
             {
-                ret = RecvMsgs(waitEvents[i].data.fd);
-                if (ret)
-                    printf("\tRecv in %d failed %d\n", waitEvents[i].data.fd, ret);
+                msg = RecvMsg(waitEvents[loop].data.fd);
+                if (msg)
+                {
+                    ret = _Server_HandleMsg(waitEvents[loop].data.fd, *msg);
+                    if (ret)
+                    {
+                        LogErr("Handle msg filed %d", ret);
+                    }
+                }
+                else
+                {
+                    LogErr("Recv in %d failed %d", waitEvents[loop].data.fd, ret);
+                }
             }
-            else if (waitEvents[i].events & EPOLLOUT)
+            else if (waitEvents[loop].events & EPOLLOUT)
             {
-                printf("\tSending data to %d\n", waitEvents[i].data.fd);
+                LogErr("Sending data to %d", waitEvents[loop].data.fd);
             }
         }
     }
 
 CommonReturn:
-    for (i = 0; i < sg_ServerListenFd[0] ; i++)
+    for (loop = 0; loop < sg_ServerListenFd[0] ; loop++)
     {
-        if (sg_ServerListenFd[i+1] && sg_ServerListenFd[i+1] != -1)
-            close(sg_ServerListenFd[i+1]);
+        if (sg_ServerListenFd[loop + 1] && sg_ServerListenFd[loop + 1] != -1)
+            close(sg_ServerListenFd[loop+1]);
     }
     if (serverFd != -1)
-	    close(serverFd);
+        close(serverFd);
     if (epoll_fd != -1)
-	    close(epoll_fd);
-	return 0;
+        close(epoll_fd);
+    
+    return NULL;
+}
+
+int
+main(
+    void
+    )
+{
+    pthread_t thread;
+    int ret = 0;
+    pthread_attr_t attr;
+    BOOL attrInited = FALSE;
+
+    ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_SERVER_ROLE_NAME, strlen(MY_TEST_SERVER_ROLE_NAME));
+    if (ret)
+    {
+        printf("Init log failed!");
+        goto CommonReturn;
+    }
+    MsgModuleInit();
+
+    pthread_attr_init(&attr);
+    attrInited = TRUE;
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    ret = pthread_create(&thread, &attr, _Server_WorkerFunc, NULL);
+    if (ret) 
+    {
+        LogErr("Failed to create thread");
+        return ret;
+    }
+    
+    pthread_join(thread, NULL);
+    
+CommonReturn:
+    if (attrInited)
+        pthread_attr_destroy(&attr);
+    MsgModuleExit();
+    LogModuleExit();
+    return ret;
 }
