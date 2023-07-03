@@ -31,15 +31,15 @@ _Server_CreateFd(
 
     if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
     {
-    	LogErr("Bind failed");
-    	goto CommonReturn;
+        LogErr("Bind failed");
+        goto CommonReturn;
     }
-    LogErr("Bind serverFd: %d", serverFd);
+    LogInfo("Bind serverFd: %d", serverFd);
 
     if(0 > listen(serverFd, MY_TEST_MAX_CLIENT_NUM_PER_SERVER))
     {
-    	LogErr("Listen failed");
-    	goto CommonReturn;
+        LogErr("Listen failed");
+        goto CommonReturn;
     }
 
 CommonReturn:
