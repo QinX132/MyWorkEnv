@@ -4,19 +4,12 @@
 #include "include.h"
 
 #define MY_TEST_ROLE_NAME_MAX_LEN               128
-#define MY_TEST_LOG_FILE                        "MyLog.log"
+#define MY_TEST_LOG_FILE                        "mylog.log"
 
-#if 1
-#define LogInfo(...)        LogPrint(MY_TEST_LOG_LEVEL_INFO, __VA_ARGS__)
-#define LogDbg(...)         LogPrint(MY_TEST_LOG_LEVEL_DEBUG, __VA_ARGS__)
-#define LogWarn(...)        LogPrint(MY_TEST_LOG_LEVEL_WARNING, __VA_ARGS__)
-#define LogErr(...)         LogPrint(MY_TEST_LOG_LEVEL_ERROR, __VA_ARGS__)
-#else
-#define LogInfo        printf
-#define LogDbg         printf
-#define LogWarn        printf
-#define LogErr         printf
-#endif
+#define LogInfo(...)                            LogPrint(MY_TEST_LOG_LEVEL_INFO, __VA_ARGS__)
+#define LogDbg(...)                             LogPrint(MY_TEST_LOG_LEVEL_DEBUG, __VA_ARGS__)
+#define LogWarn(...)                            LogPrint(MY_TEST_LOG_LEVEL_WARNING, __VA_ARGS__)
+#define LogErr(...)                             LogPrint(MY_TEST_LOG_LEVEL_ERROR, __VA_ARGS__)
 
 typedef enum _MY_TEST_LOG_LEVEL
 {

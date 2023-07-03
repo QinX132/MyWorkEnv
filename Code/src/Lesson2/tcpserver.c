@@ -59,16 +59,21 @@ _Server_HandleMsg(
 
     if (!replyMsg)
     {
-        ret = -ENOMEM;
+        ret = -1;
+        goto CommonReturn;
+    }
+    if (strcasecmp((char*)Msg.Cont.VarLenCont, MY_TEST_DISCONNECT_STRING) == 0)
+    {
+        ret = -1;
         goto CommonReturn;
     }
 
     gettimeofday(&tv, NULL);
     replyMsg->Head.MsgId = sg_MsgId ++;
-    replyMsg->Head.MsgContentLen = sizeof(MY_TEST_MSG_CONT) + MY_TEST_MSX_CONTENT_LEN;
+    replyMsg->Head.MsgContentLen = sizeof("reply");
     replyMsg->Head.MagicVer = Msg.Head.MagicVer;
     replyMsg->Head.SessionId = Msg.Head.SessionId;
-    memcpy(replyMsg->Cont.VarLenCont, "reply", strlen("reply"));
+    memcpy(replyMsg->Cont.VarLenCont, "reply", sizeof("reply"));
     replyMsg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
 
     ret = SendMsg(Fd, *replyMsg);
@@ -154,6 +159,7 @@ _Server_WorkerFunc(
                     if (ret)
                     {
                         LogErr("Handle msg filed %d", ret);
+                        break;
                     }
                 }
                 else
@@ -192,7 +198,7 @@ main(
     pthread_attr_t attr;
     BOOL attrInited = FALSE;
 
-    ret = LogModuleInit("Server.log", MY_TEST_SERVER_ROLE_NAME, strlen(MY_TEST_SERVER_ROLE_NAME));
+    ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_SERVER_ROLE_NAME, strlen(MY_TEST_SERVER_ROLE_NAME));
     if (ret)
     {
         printf("Init log failed!");

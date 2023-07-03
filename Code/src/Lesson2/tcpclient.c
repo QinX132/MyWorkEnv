@@ -62,6 +62,10 @@ _Client_WorkerFunc(
 	    char buf[4096] = {0};
         scanf("%s",buf);
         uint32_t stringLen = strlen(buf) + 1;
+        if (strcasecmp(buf, MY_TEST_DISCONNECT_STRING) == 0)
+        {
+            break;
+        }
 
         msgToSend = NewMsg();
         if (!msgToSend)
@@ -71,7 +75,7 @@ _Client_WorkerFunc(
 
         msgToSend->Head.MsgId = 1;
         gettimeofday(&tv, NULL);
-        msgToSend->Head.MsgContentLen = sizeof(MY_TEST_MSG_CONT) + stringLen;
+        msgToSend->Head.MsgContentLen = stringLen;
         msgToSend->Head.MagicVer = 0xff;
         msgToSend->Head.SessionId = currentSessionId ++;
         memcpy(msgToSend->Cont.VarLenCont, buf, stringLen);
@@ -88,10 +92,6 @@ _Client_WorkerFunc(
 
         FreeMsg(msgToSend);
         msgToSend = NULL;
-        if (strcasecmp(buf, MY_TEST_DISCONNECT_STRING) == 0)
-        {
-            break;
-        }
     }
 
 CommonReturn:
@@ -117,7 +117,7 @@ int main(
         goto CommonReturn;
     }
 
-    ret = LogModuleInit("Client.log", MY_TEST_CLIENT_ROLE_NAME, strlen(MY_TEST_CLIENT_ROLE_NAME));
+    ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_CLIENT_ROLE_NAME, strlen(MY_TEST_CLIENT_ROLE_NAME));
     if (ret)
     {
         printf("Init log failed!");
