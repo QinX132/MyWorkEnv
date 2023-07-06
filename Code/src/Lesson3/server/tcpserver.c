@@ -1,19 +1,23 @@
 #include "include.h"
 #include "myLogIO.h"
 #include "tcpMsg.h"
+#include "myThreadPool.h"
 
 #define MY_TEST_MAX_EVENTS                                      1024
 #define MY_TEST_SERVER_ROLE_NAME                                "TcpServer"
 #define MY_TEST_SERVER_TID_FILE                                 "TcpServer.tid"
 
-static int sg_ServerListenFd[MY_TEST_MAX_CLIENT_NUM_PER_SERVER + 1] = {0};
 static int sg_MsgId = 0;
+
+pthread_t *ServerMsgHandler = NULL;
+MY_TEST_THREAD_POOL *ServerThreadPool = NULL;
 
 static int
 _Server_CreateFd(
     void
     )
 {
+    int ret = 0;
     int serverFd = -1;
     serverFd = socket(AF_INET, SOCK_STREAM, 0);     //create socket
 
@@ -31,6 +35,7 @@ _Server_CreateFd(
 
     if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
     {
+        ret = -1;
         LogErr("Bind failed");
         goto CommonReturn;
     }
@@ -38,11 +43,17 @@ _Server_CreateFd(
 
     if(0 > listen(serverFd, MY_TEST_MAX_CLIENT_NUM_PER_SERVER))
     {
+        ret = -1;
         LogErr("Listen failed");
         goto CommonReturn;
     }
 
 CommonReturn:
+    if (ret && serverFd != -1)
+    {
+        close(serverFd);
+        serverFd = -1;
+    }
     return serverFd;
 }
 
@@ -98,6 +109,7 @@ _Server_WorkerFunc(
     int serverFd = -1;
     int ret = 0;
     MY_TEST_MSG *msg = NULL;
+    int serverListenFd[MY_TEST_MAX_CLIENT_NUM_PER_SERVER + 1] = {0};
     UNUSED(arg);
 
     serverFd = _Server_CreateFd();
@@ -146,8 +158,8 @@ _Server_WorkerFunc(
                     event.data.fd = tmpClientFd;
                     event.events = EPOLLIN | EPOLLET;  
                     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, tmpClientFd, &event);
-                    sg_ServerListenFd[0] ++;
-                    sg_ServerListenFd[sg_ServerListenFd[0]] = tmpClientFd;
+                    serverListenFd[0] ++;
+                    serverListenFd[serverListenFd[0]] = tmpClientFd;
                 }
             }
             else if (waitEvents[loop].events & EPOLLIN)
@@ -175,10 +187,10 @@ _Server_WorkerFunc(
     }
 
 CommonReturn:
-    for (loop = 0; loop < sg_ServerListenFd[0] ; loop++)
+    for (loop = 0; loop < serverListenFd[0] ; loop++)
     {
-        if (sg_ServerListenFd[loop + 1] && sg_ServerListenFd[loop + 1] != -1)
-            close(sg_ServerListenFd[loop+1]);
+        if (serverListenFd[loop + 1] && serverListenFd[loop + 1] != -1)
+            close(serverListenFd[loop+1]);
     }
     if (serverFd != -1)
         close(serverFd);
@@ -188,12 +200,11 @@ CommonReturn:
     return NULL;
 }
 
-int
-main(
+static int
+_Server_Init(
     void
     )
 {
-    pthread_t thread;
     int ret = 0;
     pthread_attr_t attr;
     BOOL attrInited = FALSE;
@@ -205,27 +216,99 @@ main(
         goto CommonReturn;
     }
     MsgModuleInit();
-    LogInfo("Server modules init success!");
 
-    pthread_attr_init(&attr);
-    attrInited = TRUE;
-    //pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-    ret = pthread_create(&thread, &attr, _Server_WorkerFunc, NULL);
-    if (ret) 
+    if (!ServerMsgHandler)
     {
-        LogErr("Failed to create thread");
-        return ret;
+        ServerMsgHandler = (pthread_t*)malloc(sizeof(pthread_t));
+        if (!ServerMsgHandler)
+        {
+            ret = ENOMEM;
+            LogErr("Apply memory failed!");
+            goto CommonReturn;
+        }
+        pthread_attr_init(&attr);
+        attrInited = TRUE;
+        ret = pthread_create(ServerMsgHandler, &attr, _Server_WorkerFunc, NULL);
+        if (ret) 
+        {
+            LogErr("Failed to create thread");
+            goto CommonReturn;
+        }
     }
-
-    LogInfo("Joining thread: Server Worker Func");
-    pthread_join(thread, NULL);
+    if (!ServerThreadPool)
+    {
+        ServerThreadPool = (MY_TEST_THREAD_POOL*)malloc(sizeof(MY_TEST_THREAD_POOL));
+        if (!ServerThreadPool)
+        {
+            ret = ENOMEM;
+            LogErr("Apply memory failed!");
+            goto CommonReturn;
+        }
+        (void)ThreadPoolModuleInit(ServerThreadPool, 10, 5);
+    }
     
 CommonReturn:
+    if (!ret)
+    {
+        LogInfo("Server init success!");
+    }
+    else
+    {
+        LogErr("Server init failed! ret %d %s", ret, strerror(ret));
+    }
     if (attrInited)
         pthread_attr_destroy(&attr);
-    LogInfo("Server exited!");
+    return ret;
+}
+
+static void
+_Server_Exit(
+    void
+    )
+{
+    // msg handler
+    LogInfo("----------------- MsgHandler exiting!-------------------");
+    if (ServerMsgHandler)
+    {
+        free(ServerMsgHandler);
+        ServerMsgHandler = NULL;
+    }
+    LogInfo("----------------- MsgHandler exited! -------------------");
+    // TPool
+    LogInfo("----------------- TPoolModule exiting!------------------");
+    if (ServerThreadPool)
+    {
+        ThreadPoolModuleExit(ServerThreadPool);
+        free(ServerThreadPool);
+        ServerThreadPool = NULL;
+    }
+    LogInfo("----------------- TPoolModule exited! ------------------");
+    // msg
+    LogInfo("----------------- MsgModule exiting! -------------------");
     MsgModuleExit();
+    LogInfo("----------------- MsgModule exited! --------------------");
+    // log
+    LogInfo("----------------- LogModule exiting! -------------------");
     LogModuleExit();
+}
+
+int
+main(
+    void
+    )
+{
+    int ret = 0;
+    ret = _Server_Init();
+    if (ret)
+    {
+        LogErr("Server init failed! ret %d", ret);
+        goto CommonReturn;
+    }
+    
+    LogInfo("Joining thread: Server Worker Func");
+    pthread_join(*ServerMsgHandler, NULL);
+    
+CommonReturn:
+    _Server_Exit();
     return ret;
 }

@@ -1,10 +1,14 @@
 #include "include.h"
 #include "tcpMsg.h"
 #include "myLogIO.h"
+#include "myThreadPool.h"
 
 static uint32_t currentSessionId = 0;
 #define MY_TEST_CLIENT_ROLE_NAME                                "TcpClient"
 #define MY_TEST_CLIENT_TID_FILE                                 "TcpClient.tid"
+
+pthread_t *ClientMsgHandler = NULL;
+MY_TEST_THREAD_POOL *ClientThreadPool = NULL;
 
 static int
 _Client_CreateFd(
@@ -102,20 +106,14 @@ CommonReturn:
     return NULL;
 }
 
-int main(
-    int argc,
-    char *argv[]
+static int
+_Client_Init(
+    char *PeerIp
     )
 {
     int ret = 0;
-    pthread_t thread;
     pthread_attr_t attr;
     BOOL attrInited = FALSE;
-    if (argc != 2)
-    {
-        printf("Usage: ./tcpclient ip\n");
-        goto CommonReturn;
-    }
 
     ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_CLIENT_ROLE_NAME, strlen(MY_TEST_CLIENT_ROLE_NAME));
     if (ret)
@@ -124,26 +122,98 @@ int main(
         goto CommonReturn;
     }
     MsgModuleInit();
-
-    pthread_attr_init(&attr);
-    attrInited = TRUE;
-    //pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-    ret = pthread_create(&thread, &attr, _Client_WorkerFunc, (void*)argv[1]);
-    if (ret) 
+    
+    if (!ClientMsgHandler)
     {
-        LogErr("Failed to create thread");
-        return ret;
+        ClientMsgHandler = (pthread_t*)malloc(sizeof(pthread_t));
+        if (!ClientMsgHandler)
+        {
+            ret = ENOMEM;
+            LogErr("Apply memory failed!");
+            goto CommonReturn;
+        }
+        pthread_attr_init(&attr);
+        attrInited = TRUE;
+        ret = pthread_create(ClientMsgHandler, &attr, _Client_WorkerFunc, (void*)PeerIp);
+        if (ret) 
+        {
+            LogErr("Failed to create thread");
+            goto CommonReturn;
+        }
+    }
+    if (!ClientThreadPool)
+    {
+        ClientThreadPool = (MY_TEST_THREAD_POOL*)malloc(sizeof(MY_TEST_THREAD_POOL));
+        if (!ClientThreadPool)
+        {
+            ret = ENOMEM;
+            LogErr("Apply memory failed!");
+            goto CommonReturn;
+        }
+        (void)ThreadPoolModuleInit(ClientThreadPool, 10, 5);
     }
     
-    LogInfo("Joining thread: Client Worker Func");
-    pthread_join(thread, NULL);
-
 CommonReturn:
     if (attrInited)
         pthread_attr_destroy(&attr);
-    LogInfo("Client exited!");
+    return ret;
+}
+
+static void 
+_Client_Exit(
+    void
+    )
+{
+    // msg handler
+    LogInfo("----------------- MsgHandler exiting!-------------------");
+    if (ClientMsgHandler)
+    {
+        free(ClientMsgHandler);
+        ClientMsgHandler = NULL;
+    }
+    LogInfo("----------------- MsgHandler exited! -------------------");
+    // TPool
+    LogInfo("----------------- TPoolModule exiting!------------------");
+    if (ClientThreadPool)
+    {
+        ThreadPoolModuleExit(ClientThreadPool);
+        free(ClientThreadPool);
+        ClientThreadPool = NULL;
+    }
+    LogInfo("----------------- TPoolModule exited! ------------------");
+    // msg
+    LogInfo("----------------- MsgModule exiting! -------------------");
     MsgModuleExit();
+    LogInfo("----------------- MsgModule exited! --------------------");
+    // log
+    LogInfo("----------------- LogModule exiting! -------------------");
     LogModuleExit();
+}
+
+int main(
+    int argc,
+    char *argv[]
+    )
+{
+    int ret = 0;
+    
+    if (argc != 2)
+    {
+        printf("Usage: ./tcpclient ip\n");
+        goto CommonReturn;
+    }
+    
+    ret = _Client_Init(argv[1]);
+    if (ret)
+    {
+        LogErr("Client init failed! ret %d", ret);
+        goto CommonReturn;
+    }
+    
+    LogInfo("Joining thread: Client Worker Func");
+    pthread_join(*ClientMsgHandler, NULL);
+
+CommonReturn:
+    _Client_Exit();
     return ret;
 }
