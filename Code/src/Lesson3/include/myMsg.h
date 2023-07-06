@@ -1,5 +1,5 @@
-#ifndef _TCP_MSG_H_
-#define _TCP_MSG_H_
+#ifndef _MY_MSG_H_
+#define _MY_MSG_H_
 #include "include.h"
 
 #define MY_TEST_SESSION_ID_MAX_LEN          64
@@ -84,4 +84,4 @@ SendMsg(
     MY_TEST_MSG Msg
     );
 
-#endif
+#endif /* _MY_MSG_H_ */

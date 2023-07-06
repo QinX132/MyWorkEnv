@@ -1,6 +1,6 @@
 #include "include.h"
 #include "myLogIO.h"
-#include "tcpMsg.h"
+#include "myMsg.h"
 #include "myThreadPool.h"
 
 #define MY_TEST_MAX_EVENTS                                      1024

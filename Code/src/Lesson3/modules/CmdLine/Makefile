@@ -1,8 +1,8 @@
 CC 		:= 	gcc
 CFLAGS 	:= 	-Wall -fPIC
-TARGET	:= myMsg
+TARGET	:= myCmdLine
 
-SRC_FILES := myMsg.c
+SRC_FILES := myCmdLine.c
 
 CFLAGS	+= 	-I../../include/
 
