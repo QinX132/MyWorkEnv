@@ -26,6 +26,6 @@ tcpserver: $(OBJ_FILE)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(SVR_OBJ_FILE) $(CLT_OBJ_FILE) $(TARGET)
+	rm -f $(OBJ_FILE) $(TARGET)
 
 .PHONY: all
