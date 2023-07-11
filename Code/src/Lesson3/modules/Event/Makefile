@@ -1,8 +1,8 @@
 CC 		:= 	gcc
 CFLAGS 	:= 	-Wall -fPIC -Wextra -g
-TARGET	:= myLog
+TARGET	:= 	myEvent
 
-SRC_FILES := myLogIO.c
+SRC_FILES := myEvent.c
 
 CFLAGS	+= 	-I../../include/
 

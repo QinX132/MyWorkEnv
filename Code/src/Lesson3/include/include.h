@@ -21,6 +21,10 @@
 #include <sys/socket.h>
 #include <pthread.h>
 #include <malloc.h>
+#include <sys/syscall.h>
+#include <stdint.h>
+
+#include "myErrno.h"
 
 #define BOOL                                unsigned char
 #define uint8_t                             unsigned char
@@ -40,7 +44,12 @@
 #define likely(x)                           __builtin_expect(!!(x), 1)
 #define unlikely(x)                         __builtin_expect(!!(x), 0)
 
-#define MY_TEST_PORT                        13231
-#define MY_TEST_MAX_CLIENT_NUM_PER_SERVER   128
+#define MY_TEST_TCP_SERVER_PORT                     15000
+#define MY_TEST_SERVER_CMD_LINE_PORT                15001
+#define MY_TEST_CLIENT_CMD_LINE_PORT                15002
+#define MY_TEST_MAX_CLIENT_NUM_PER_SERVER           128
+
+#define MY_TEST_UATOMIC_INC(addr)                           __sync_fetch_and_add((addr), 1)
+#define MY_TEST_UATOMIC_DEC(addr)                           __sync_fetch_and_add((addr), -1)
 
 #endif /* _MY_TEST_INCLUDE_H_ */

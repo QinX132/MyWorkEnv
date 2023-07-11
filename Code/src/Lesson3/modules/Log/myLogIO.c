@@ -3,14 +3,15 @@
 static char sg_RoleName[MY_TEST_ROLE_NAME_MAX_LEN] = {0};
 static char *sg_LogLevelStr [MY_TEST_LOG_LEVEL_MAX] = 
 {
-    [MY_TEST_LOG_LEVEL_INFO] = "Info",
-    [MY_TEST_LOG_LEVEL_DEBUG] = "Debug",
-    [MY_TEST_LOG_LEVEL_WARNING] = "Warn",
-    [MY_TEST_LOG_LEVEL_ERROR] = "Error",
+    [MY_TEST_LOG_LEVEL_INFO] = "Inf",
+    [MY_TEST_LOG_LEVEL_DEBUG] = "Dbg",
+    [MY_TEST_LOG_LEVEL_WARNING] = "Wrn",
+    [MY_TEST_LOG_LEVEL_ERROR] = "Err",
 };
 static pthread_spinlock_t sg_LogSpinlock;
 static char sg_LogPath[128] = {0};
 static BOOL sg_LogModuleInited = FALSE;
+static FILE* sg_LogFileFp = NULL;
 
 int
 LogModuleInit(
@@ -32,6 +33,8 @@ LogModuleInit(
     pthread_spin_init(&sg_LogSpinlock, PTHREAD_PROCESS_PRIVATE);
     sg_LogModuleInited = TRUE;
 
+    sg_LogFileFp = fopen(sg_LogPath, "a");
+    
 CommonReturn:
     return ret;
 }
@@ -39,13 +42,12 @@ CommonReturn:
 void
 LogPrint(
     int level,
+    const char* Function,
+    int Line,
     const char* Fmt,
     ...
     )
 {
-    time_t timep;
-    struct tm *ptm = NULL;
-    static FILE* logFileFp = NULL;
 
     if (!sg_LogModuleInited)
     {
@@ -55,19 +57,19 @@ LogPrint(
     va_list args;
     pthread_spin_lock(&sg_LogSpinlock);
     
-    logFileFp = fopen(sg_LogPath, "a+");
-    
     va_start(args, Fmt);
-    time(&timep);
-    ptm = localtime(&timep);
-    fprintf(logFileFp, "%s[%04d-%02d-%02d-%02d:%02d:%02d]<%5s>:", sg_RoleName, ptm->tm_year + 1900, 
-        ptm->tm_mon + 1, ptm->tm_mday, ptm->tm_hour, ptm->tm_min, ptm->tm_sec, sg_LogLevelStr[level]);
-    vfprintf(logFileFp, Fmt, args);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    time_t now = tv.tv_sec;
+    struct tm* tm_info = localtime(&now);
+    char timestamp[24] = {0};
+    strftime(timestamp, sizeof(timestamp), "%Y/%m/%d_%H:%M:%S", tm_info);
+    int milliseconds = tv.tv_usec / 1000;
+    fprintf(sg_LogFileFp, "[%s.%03d]%s<%s>[%s:%d]:", timestamp, milliseconds, sg_RoleName, sg_LogLevelStr[level], Function, Line);
+    vfprintf(sg_LogFileFp, Fmt, args);
     va_end(args);
-    fprintf(logFileFp, "\n");
-    fsync(fileno(logFileFp));
-    
-    fclose(logFileFp);
+    fprintf(sg_LogFileFp, "\n");
+    fflush(sg_LogFileFp);
     
     pthread_spin_unlock(&sg_LogSpinlock);
 }
@@ -82,5 +84,6 @@ LogModuleExit(
         pthread_spin_lock(&sg_LogSpinlock);
         pthread_spin_unlock(&sg_LogSpinlock);
         pthread_spin_destroy(&sg_LogSpinlock);
+        fclose(sg_LogFileFp);
     }
 }

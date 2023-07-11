@@ -6,10 +6,11 @@
 #define MY_TEST_ROLE_NAME_MAX_LEN               128
 #define MY_TEST_LOG_FILE                        "/tmp/mylog.log"
 
-#define LogInfo(...)                            LogPrint(MY_TEST_LOG_LEVEL_INFO, __VA_ARGS__)
-#define LogDbg(...)                             LogPrint(MY_TEST_LOG_LEVEL_DEBUG, __VA_ARGS__)
-#define LogWarn(...)                            LogPrint(MY_TEST_LOG_LEVEL_WARNING, __VA_ARGS__)
-#define LogErr(...)                             LogPrint(MY_TEST_LOG_LEVEL_ERROR, __VA_ARGS__)
+#define LogInfo(Fmt, ...)               LogPrint(MY_TEST_LOG_LEVEL_INFO, __func__, __LINE__, Fmt, ##__VA_ARGS__)
+#define LogDbg(Fmt, ...)                LogPrint(MY_TEST_LOG_LEVEL_DEBUG, __func__, __LINE__, Fmt, ##__VA_ARGS__)
+#define LogWarn(Fmt, ...)               LogPrint(MY_TEST_LOG_LEVEL_WARNING, __func__, __LINE__, Fmt, ##__VA_ARGS__)
+#define LogErr(Fmt, ...)                LogPrint(MY_TEST_LOG_LEVEL_ERROR, __func__, __LINE__, Fmt, ##__VA_ARGS__)
+#define debug                           LogDbg("DEBUG: [tid %u]", syscall(SYS_gettid));
 
 typedef enum _MY_TEST_LOG_LEVEL
 {
@@ -32,6 +33,8 @@ LogModuleInit(
 void
 LogPrint(
     int level,
+    const char* Function,
+    int Line,
     const char* Fmt,
     ...
     );

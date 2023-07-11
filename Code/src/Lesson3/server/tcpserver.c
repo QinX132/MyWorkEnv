@@ -30,7 +30,7 @@ _Server_CreateFd(
 
     struct sockaddr_in localAddr = {0};
     localAddr.sin_family = AF_INET;
-    localAddr.sin_port = htons(MY_TEST_PORT);
+    localAddr.sin_port = htons(MY_TEST_TCP_SERVER_PORT);
     localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
 
     if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
@@ -216,6 +216,7 @@ _Server_Init(
         goto CommonReturn;
     }
     MsgModuleInit();
+    LogInfo("---------------- Server init start ----------------");
 
     if (!ServerMsgHandler)
     {
@@ -292,6 +293,13 @@ _Server_Exit(
     LogModuleExit();
 }
 
+void 
+test(void* a)
+{
+    UNUSED(a);
+    LogInfo("Test%d", *(int*)a);
+}
+
 int
 main(
     void
@@ -304,7 +312,7 @@ main(
         LogErr("Server init failed! ret %d", ret);
         goto CommonReturn;
     }
-    
+   
     LogInfo("Joining thread: Server Worker Func");
     pthread_join(*ServerMsgHandler, NULL);
     

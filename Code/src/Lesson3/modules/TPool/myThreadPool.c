@@ -1,7 +1,7 @@
 #include "myThreadPool.h"
 #include "myLogIO.h"
 
-#define MY_TEST_TASK_TIME_OUT_DEFAULT_VAL       5 //seconds
+#define MY_TEST_TASK_TIME_OUT_DEFAULT_VAL                       5 //seconds
 static int sg_ThreadPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
 static BOOL sg_TPoolModuleInited = FALSE;
 
@@ -11,33 +11,51 @@ _ThreadPoolFunction(
     )
 {
     MY_TEST_THREAD_POOL* thread_pool = (MY_TEST_THREAD_POOL*)arg;
+    MY_TEST_THREAD_TASK task;
 
-    while (1) {
-        pthread_mutex_lock(&(thread_pool->Lock));
-
-        while (thread_pool->QueueCount == 0 && !thread_pool->Exit) {
-            pthread_cond_wait(&(thread_pool->Cond), &(thread_pool->Lock));
-        }
-
-        if (thread_pool->Exit) {
-            pthread_mutex_unlock(&(thread_pool->Lock));
-            pthread_exit(NULL);
-        }
-
-        MY_TEST_THREAD_TASK task = thread_pool->TaskQueue[thread_pool->QueueFront];
-        thread_pool->QueueFront = (thread_pool->QueueFront + 1) % TASK_QUEUE_SIZE;
-        memset(&thread_pool->TaskQueue[thread_pool->QueueFront], 0, sizeof(MY_TEST_THREAD_TASK));
-        thread_pool->QueueCount --;
-
-        pthread_mutex_unlock(&(thread_pool->Lock));
-
+    while (!thread_pool->Exit) 
+    {
+        pthread_mutex_lock(&thread_pool->Lock);
+        MY_TEST_UATOMIC_INC(&thread_pool->ThreadNum);
+        while(pthread_cond_wait(&thread_pool->Cond, &thread_pool->Lock) == 0)
+        {
+            if (thread_pool->Exit)
+            {
+                pthread_mutex_unlock(&thread_pool->Lock);
+                goto CommonReturn;
+            }
+            else if (thread_pool->QueueCount == 0)
+            {
+                pthread_mutex_unlock(&thread_pool->Lock);
+                continue;
+            }
+            else
+            {
+                task = thread_pool->TaskQueue[thread_pool->QueueFront];
+                memset(&thread_pool->TaskQueue[thread_pool->QueueFront], 0, sizeof(MY_TEST_THREAD_TASK));
+                thread_pool->QueueFront = (thread_pool->QueueFront + 1) % TASK_QUEUE_SIZE;
+                thread_pool->QueueCount --;
+                break;
+            }
+        };
+        pthread_mutex_unlock(&thread_pool->Lock);
+        
+        MY_TEST_UATOMIC_DEC(&thread_pool->ThreadNum);
         if (task.TaskFunc)
         {
             task.TaskFunc(task.TaskArg);
-            task.TaskDone = TRUE;
+            if (task.HasTimeOut == TRUE)
+            {
+                pthread_mutex_lock(task.TaskLock);
+                pthread_cond_signal(task.TaskCond);
+                pthread_mutex_unlock(task.TaskLock);
+            }
         }
     }
 
+CommonReturn:
+    MY_TEST_UATOMIC_DEC(&thread_pool->ThreadNum);
+    LogInfo("Thread worker %lu exit!", pthread_self());
     pthread_exit(NULL);
 }
 
@@ -49,6 +67,7 @@ ThreadPoolModuleInit(
     )
 {
     int loop = 0;
+    LogInfo("Thread pool init start!");
     
     pthread_mutex_init(&ThreadPool->Lock, NULL);
     pthread_cond_init(&ThreadPool->Cond, NULL);
@@ -56,7 +75,7 @@ ThreadPoolModuleInit(
     ThreadPool->QueueRear = -1;
     ThreadPool->QueueCount = 0;
     ThreadPool->Exit = FALSE;
-    ThreadPool->ThreadNum = ThreadPoolSize;
+    ThreadPool->ThreadNum = 0;
 
     ThreadPool->Threads = (pthread_t*)malloc(sizeof(pthread_t) * ThreadPoolSize);
 
@@ -66,7 +85,20 @@ ThreadPoolModuleInit(
 
     sg_ThreadPoolTaskTimeout = Timeout ? Timeout : MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
     sg_TPoolModuleInited = TRUE;
-    LogInfo("Thread pool inited!");
+    
+    // to make sure workers are already
+    while(1)
+    {
+        pthread_mutex_lock(&ThreadPool->Lock);
+        if (ThreadPool->ThreadNum >= ThreadPoolSize)
+        {
+            pthread_mutex_unlock(&ThreadPool->Lock);
+            break;
+        }
+        pthread_mutex_unlock(&ThreadPool->Lock);
+    };
+    
+    LogInfo("Thread pool init success!");
 }
 
 void
@@ -94,36 +126,118 @@ ThreadPoolModuleExit(
     }
 }
 
+// async api, TaskArg is a in arg
 int
 AddTaskIntoThread(
     MY_TEST_THREAD_POOL* ThreadPool,
     void (*TaskFunc)(void*),
-    void* TaskArg
+    __in void* TaskArg
     )
 {
     int ret = 0;
     if (!sg_TPoolModuleInited)
     {
-        ret = EINVAL;
+        ret = MY_EINVAL;
         goto CommonReturn;
     }
-    pthread_mutex_lock(&(ThreadPool->Lock));
-
-    if (ThreadPool->QueueCount == TASK_QUEUE_SIZE) {
-        LogErr("Task queue is full. Task not added.\n");
-        pthread_mutex_unlock(&(ThreadPool->Lock));
-        goto CommonReturn;
+    pthread_mutex_lock(&ThreadPool->Lock);
+    {
+        if (ThreadPool->QueueCount >= TASK_QUEUE_SIZE) {
+            ret = MY_EBUSY;
+            LogErr("Task queue is full. Task not added.");
+            pthread_mutex_unlock(&ThreadPool->Lock);
+            goto CommonReturn;
+        }
+        ThreadPool->QueueRear = (ThreadPool->QueueRear + 1) % TASK_QUEUE_SIZE;
+        ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskFunc = TaskFunc;
+        ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskArg = TaskArg;
+        ThreadPool->TaskQueue[ThreadPool->QueueRear].HasTimeOut = FALSE;
+        ThreadPool->QueueCount++;
+        pthread_cond_signal(&ThreadPool->Cond);
     }
-
-    ThreadPool->QueueRear = (ThreadPool->QueueRear + 1) % TASK_QUEUE_SIZE;
-    ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskFunc = TaskFunc;
-    ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskArg = TaskArg;
-    ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskDone = FALSE;
-    ThreadPool->QueueCount++;
-
-    pthread_cond_signal(&(ThreadPool->Cond));
-    pthread_mutex_unlock(&(ThreadPool->Lock));
+    pthread_mutex_unlock(&ThreadPool->Lock);
     
 CommonReturn:
+    return ret;
+}
+
+// sync api, you can care about TaskArg inout
+int
+AddTaskIntoThreadAndWait(
+    MY_TEST_THREAD_POOL* ThreadPool,
+    void (*TaskFunc)(void*),
+    __inout void* TaskArg
+    )
+{
+    int ret = 0;
+    struct timespec ts = {0, 0};
+    BOOL taskAdded = FALSE;
+    pthread_mutex_t taskLock;
+    pthread_cond_t taskCond;
+    BOOL pthreadTaskInited = FALSE;
+    
+    if (!sg_TPoolModuleInited || sg_ThreadPoolTaskTimeout <= 0)
+    {
+        ret = MY_EINVAL;
+        goto CommonReturn;
+    }
+    
+    pthread_mutex_init(&taskLock, NULL);
+    pthread_cond_init(&taskCond, NULL);
+    pthreadTaskInited = TRUE;
+    
+    pthread_mutex_lock(&ThreadPool->Lock);
+    {
+        if (ThreadPool->QueueCount >= TASK_QUEUE_SIZE) {
+            LogErr("Task queue is full. Task not added.");
+            pthread_mutex_unlock(&(ThreadPool->Lock));
+            goto CommonReturn;
+        }
+        if (clock_gettime(CLOCK_REALTIME, &ts) == MY_SUCCESS)
+        {
+            ThreadPool->QueueRear = (ThreadPool->QueueRear + 1) % TASK_QUEUE_SIZE;
+            ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskFunc = TaskFunc;
+            ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskArg = TaskArg;
+            ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskLock = &taskLock;
+            ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskCond = &taskCond;
+            ThreadPool->TaskQueue[ThreadPool->QueueRear].HasTimeOut = TRUE;
+            ThreadPool->QueueCount++;
+            taskAdded = TRUE;
+            pthread_mutex_lock(ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskLock);
+
+            pthread_cond_signal(&ThreadPool->Cond);
+        }
+        else
+        {
+            ret = MY_EIO;
+            LogErr("Get time failed!");
+        }
+    }
+    pthread_mutex_unlock(&ThreadPool->Lock);
+
+    if (taskAdded)
+    {
+        ts.tv_sec += sg_ThreadPoolTaskTimeout;
+        ts.tv_nsec = 0;
+        ret = pthread_cond_timedwait(&taskCond, &taskLock, &ts); 
+    }
+    pthread_mutex_unlock(&taskLock);
+    
+    if (ETIMEDOUT == ret)
+    {
+        pthread_mutex_lock(&ThreadPool->Lock);
+        ThreadPool->Exit = TRUE;
+        pthread_cond_broadcast(&ThreadPool->Cond);
+        pthread_mutex_unlock(&ThreadPool->Lock);
+        sg_TPoolModuleInited = FALSE;
+        LogErr("Error happened, tpool exit!");
+    }
+
+CommonReturn:
+    if (pthreadTaskInited)
+    {
+        pthread_mutex_destroy(&taskLock);
+        pthread_cond_destroy(&taskCond); 
+    }
     return ret;
 }

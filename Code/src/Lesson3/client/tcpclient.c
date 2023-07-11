@@ -29,7 +29,7 @@ _Client_CreateFd(
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
 
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(MY_TEST_PORT);
+    serverAddr.sin_port = htons(MY_TEST_TCP_SERVER_PORT);
     inet_pton(AF_INET, Ip, &serverIp);
     serverAddr.sin_addr.s_addr=serverIp;
     if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))

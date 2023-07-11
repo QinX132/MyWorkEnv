@@ -1,5 +1,5 @@
 CC 		:= 	gcc
-CFLAGS 	:= 	-Wall -fPIC
+CFLAGS 	:= 	-Wall -fPIC -Wextra -g
 TARGET	:= myMsg
 
 SRC_FILES := myMsg.c

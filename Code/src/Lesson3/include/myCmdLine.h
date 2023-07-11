@@ -1,0 +1,13 @@
+#ifndef _MY_CMD_LINE_H_
+#define _MY_CMD_LINE_H_
+
+typedef enum _MY_TEST_CMDLINE_ROLE
+{
+    MY_TEST_CMDLINE_ROLE_SVR,
+    MY_TEST_CMDLINE_ROLE_CLT,
+    
+    MY_TEST_CMDLINE_ROLE_UNUSED
+}
+MY_TEST_CMDLINE_ROLE;
+
+#endif /* _MY_CMD_LINE_H_ */

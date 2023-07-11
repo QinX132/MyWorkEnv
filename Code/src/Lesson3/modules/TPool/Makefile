@@ -1,5 +1,5 @@
 CC 		:= 	gcc
-CFLAGS 	:= 	-Wall -fPIC
+CFLAGS 	:= 	-Wall -fPIC -Wextra -g
 TARGET	:= myTPool
 
 SRC_FILES := myThreadPool.c
