@@ -58,8 +58,10 @@ MsgModuleExit(
     );
 
 void
-EchoMsgModuleStats(
-    void
+MsgModuleStat(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
     );
 
 MY_TEST_MSG *

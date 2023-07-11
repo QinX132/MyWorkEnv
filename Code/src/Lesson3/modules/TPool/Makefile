@@ -4,7 +4,8 @@ TARGET	:= myTPool
 
 SRC_FILES := myThreadPool.c
 
-CFLAGS	+= 	-I../../include/
+CFLAGS	+= 	-I../../include/ \
+            -I../../../third_party/libevent/include/
 
 OBJECTS := $(SRC_FILES:.c=.o)
 

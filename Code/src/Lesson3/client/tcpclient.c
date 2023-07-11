@@ -2,6 +2,7 @@
 #include "myMsg.h"
 #include "myLogIO.h"
 #include "myThreadPool.h"
+#include "myModuleHealth.h"
 
 static uint32_t currentSessionId = 0;
 #define MY_TEST_CLIENT_ROLE_NAME                                "TcpClient"
@@ -153,6 +154,12 @@ _Client_Init(
         (void)ThreadPoolModuleInit(ClientThreadPool, 10, 5);
     }
     
+    ret = HealthModuleInit();
+    if (ret)
+    {
+        LogErr("HealthModuleInit failed!");
+    }
+    
 CommonReturn:
     if (attrInited)
         pthread_attr_destroy(&attr);
@@ -164,6 +171,10 @@ _Client_Exit(
     void
     )
 {
+    // health
+    LogInfo("----------------- HealthModule exiting!-------------------");
+    HealthModuleExit();
+    LogInfo("----------------- HealthModule exited! -------------------");
     // msg handler
     LogInfo("----------------- MsgHandler exiting!-------------------");
     if (ClientMsgHandler)

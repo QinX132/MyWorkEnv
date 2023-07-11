@@ -1,5 +1,6 @@
 #include "myMsg.h"
 #include "myLogIO.h"
+#include "myModuleHealth.h"
 
 static uint32_t MsgSend = 0;
 static uint64_t MsgSendBytes = 0;
@@ -33,12 +34,17 @@ MsgModuleExit(
 }
 
 void
-EchoMsgModuleStats(
-    void
+MsgModuleStat(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
     )
 {
-    LogInfo("MsgSend = %u, MsgSendBytes = %llu, MsgSendFailed = %u, MsgRecv = %u, MsgRecvBytes = %llu, MsgRecvFailed = %u",
-        MsgSend, MsgSendBytes, MsgSendFailed, MsgRecv, MsgRecvBytes, MsgRecvFailed);
+    UNUSED(Arg);
+    UNUSED(Fd);
+    UNUSED(Event);
+    LogInfo("<%s:[MsgSend=%u, MsgSendBytes=%llu, MsgSendFailed=%u, MsgRecv=%u, MsgRecvBytes=%llu, MsgRecvFailed=%u]>",
+        HealthModuleNameByEnum(MY_MODULES_ENUM_MSG), MsgSend, MsgSendBytes, MsgSendFailed, MsgRecv, MsgRecvBytes, MsgRecvFailed);
 }
 
 MY_TEST_MSG *

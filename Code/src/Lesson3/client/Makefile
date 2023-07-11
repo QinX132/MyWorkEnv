@@ -1,8 +1,7 @@
 CC = gcc
 
-#WORK_ROOT = $(PWD)
-WORK_ROOT = .
-MODULE_ROOT = ../modules
+WORK_ROOT = $(PWD)
+MODULE_ROOT = $(PWD)/../modules
 include Makefile.feat
 include Makefile.module
 
@@ -10,11 +9,14 @@ SRC_FILE += $(WORK_ROOT)/tcpclient.c
 
 OBJ_FILE := $(SRC_FILE:.c=.o) 
 
-CFLAGS 	+= 	-I$(WORK_ROOT)/../include/ 
+CFLAGS 	+= 	-I$(WORK_ROOT)/../include/ \
+			-I$(WORK_ROOT)/../../third_party/libevent/include/ 
+
 CFLAGS 	+= 	-Wall -Wextra -g
 CFLAGS  +=  $(FEATURE_CFLAGS)
 
 LDFLAGS +=	$(FEATURE_LDFLAGS)
+LDFLAGS +=  -L$(WORK_ROOT)/../../third_party/libevent/lib/ -levent
 LDFLAGS +=  -pthread
 
 TARGET = tcpclient

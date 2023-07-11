@@ -4,7 +4,8 @@ TARGET	:= myMsg
 
 SRC_FILES := myMsg.c
 
-CFLAGS	+= 	-I../../include/
+CFLAGS	+= 	-I../../include/ \
+            -I../../../third_party/libevent/include/
 
 OBJECTS := $(SRC_FILES:.c=.o)
 

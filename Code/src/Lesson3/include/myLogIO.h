@@ -44,4 +44,11 @@ LogModuleExit(
     void
     );
 
+void
+LogModuleStat(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
+    );
+
 #endif /* _MY_LOG_IO_H_ */

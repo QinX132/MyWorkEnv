@@ -23,6 +23,11 @@
 #include <malloc.h>
 #include <sys/syscall.h>
 #include <stdint.h>
+#include <signal.h>
+
+#include "event2/event.h"
+#include "event2/event_struct.h"
+#include "event2/util.h"
 
 #include "myErrno.h"
 
@@ -48,6 +53,7 @@
 #define MY_TEST_SERVER_CMD_LINE_PORT                15001
 #define MY_TEST_CLIENT_CMD_LINE_PORT                15002
 #define MY_TEST_MAX_CLIENT_NUM_PER_SERVER           128
+#define MY_TEST_KILL_SIGNAL                         SIGUSR1
 
 #define MY_TEST_UATOMIC_INC(addr)                           __sync_fetch_and_add((addr), 1)
 #define MY_TEST_UATOMIC_DEC(addr)                           __sync_fetch_and_add((addr), -1)

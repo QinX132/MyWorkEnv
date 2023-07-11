@@ -1,9 +1,14 @@
 #include "myThreadPool.h"
+#include "myModuleHealth.h"
 #include "myLogIO.h"
 
 #define MY_TEST_TASK_TIME_OUT_DEFAULT_VAL                       5 //seconds
 static int sg_ThreadPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
 static BOOL sg_TPoolModuleInited = FALSE;
+
+static int sg_TPoolTaskAdded = 0;
+static int sg_TPoolTaskSucceed = 0;
+static int sg_TPoolTaskFailed = 0;
 
 static void* 
 _ThreadPoolFunction(
@@ -50,6 +55,10 @@ _ThreadPoolFunction(
                 pthread_cond_signal(task.TaskCond);
                 pthread_mutex_unlock(task.TaskLock);
             }
+            else
+            {
+                MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+            }
         }
     }
 
@@ -79,7 +88,7 @@ ThreadPoolModuleInit(
 
     ThreadPool->Threads = (pthread_t*)malloc(sizeof(pthread_t) * ThreadPoolSize);
 
-    for (loop = 0; loop < ThreadPoolSize; loop++) {
+    for (loop = 0; loop < ThreadPoolSize; loop ++) {
         pthread_create(&(ThreadPool->Threads[loop]), NULL, _ThreadPoolFunction, (void*)ThreadPool);
     }
 
@@ -154,10 +163,12 @@ AddTaskIntoThread(
         ThreadPool->TaskQueue[ThreadPool->QueueRear].HasTimeOut = FALSE;
         ThreadPool->QueueCount++;
         pthread_cond_signal(&ThreadPool->Cond);
+        MY_TEST_UATOMIC_INC(&sg_TPoolTaskAdded);
     }
     pthread_mutex_unlock(&ThreadPool->Lock);
     
 CommonReturn:
+    MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
     return ret;
 }
 
@@ -206,6 +217,7 @@ AddTaskIntoThreadAndWait(
             pthread_mutex_lock(ThreadPool->TaskQueue[ThreadPool->QueueRear].TaskLock);
 
             pthread_cond_signal(&ThreadPool->Cond);
+            MY_TEST_UATOMIC_INC(&sg_TPoolTaskAdded);
         }
         else
         {
@@ -239,5 +251,28 @@ CommonReturn:
         pthread_mutex_destroy(&taskLock);
         pthread_cond_destroy(&taskCond); 
     }
+    if (ret)
+    {
+        MY_TEST_UATOMIC_INC(&sg_TPoolTaskFailed);
+    }
+    else
+    {
+        MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+    }
     return ret;
+}
+
+void
+TPoolModuleStat(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
+    )
+{
+    UNUSED(Fd);
+    UNUSED(Event);
+    UNUSED(Arg);
+
+    LogInfo("<%s:[TaskAdded=%d, TaskSucceed=%d, TaskFailed=%d]>",
+        HealthModuleNameByEnum(MY_MODULES_ENUM_TPOOL), sg_TPoolTaskAdded, sg_TPoolTaskSucceed, sg_TPoolTaskFailed);
 }

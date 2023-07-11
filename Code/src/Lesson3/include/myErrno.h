@@ -1,4 +1,4 @@
-    #ifndef _MY_ERRNO_H_
+#ifndef _MY_ERRNO_H_
 #define _MY_ERRNO_H_
 
 #define MY_SUCCESS              0

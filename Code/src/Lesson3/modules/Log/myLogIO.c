@@ -1,4 +1,7 @@
 #include "myLogIO.h"
+#include "myModuleHealth.h"
+
+#define MY_TEST_LOG_MEX_LEN             (50 * 1024 * 1024)
 
 static char sg_RoleName[MY_TEST_ROLE_NAME_MAX_LEN] = {0};
 static char *sg_LogLevelStr [MY_TEST_LOG_LEVEL_MAX] = 
@@ -12,6 +15,8 @@ static pthread_spinlock_t sg_LogSpinlock;
 static char sg_LogPath[128] = {0};
 static BOOL sg_LogModuleInited = FALSE;
 static FILE* sg_LogFileFp = NULL;
+
+static int sg_LogPrinted = 0;
 
 int
 LogModuleInit(
@@ -70,6 +75,8 @@ LogPrint(
     va_end(args);
     fprintf(sg_LogFileFp, "\n");
     fflush(sg_LogFileFp);
+
+    sg_LogPrinted ++;
     
     pthread_spin_unlock(&sg_LogSpinlock);
 }
@@ -86,4 +93,47 @@ LogModuleExit(
         pthread_spin_destroy(&sg_LogSpinlock);
         fclose(sg_LogFileFp);
     }
+}
+
+void
+LogModuleStat(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
+    )
+{
+    long long size = 0;
+    FILE* fp = fopen(sg_LogPath, "rb");
+    UNUSED(Arg);
+    UNUSED(Fd);
+    UNUSED(Event);
+    
+    if (!fp) 
+    {
+        LogErr("Failed to open file: %s\n", sg_LogPath);
+        goto CommonReturn;
+    }
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+
+    LogInfo("<%s:[LogPrinted:%d, LogSize:%lld]>", HealthModuleNameByEnum(MY_MODULES_ENUM_LOG), sg_LogPrinted, size);
+
+CommonReturn:
+    if (fp)
+        fclose(fp);
+
+    if (size >= MY_TEST_LOG_MEX_LEN)
+    {
+        pthread_spin_lock(&sg_LogSpinlock);
+        fclose(sg_LogFileFp);
+        char cmd[128] = {0};
+        if (strlen(sg_LogPath))
+        {
+            sprintf(cmd, "mv %s %s.0", sg_LogPath, sg_LogPath);
+        }
+        system(cmd);
+        sg_LogFileFp = fopen(sg_LogPath, "a");
+        pthread_spin_unlock(&sg_LogSpinlock);
+    }
+    return ;
 }

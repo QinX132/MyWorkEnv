@@ -54,4 +54,11 @@ AddTaskIntoThreadAndWait(
     void* TaskArg
     );
 
+void
+TPoolModuleStat(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
+    );
+
 #endif /* _MY_THREAD_POOL_H_ */

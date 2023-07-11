@@ -2,6 +2,7 @@
 #include "myLogIO.h"
 #include "myMsg.h"
 #include "myThreadPool.h"
+#include "myModuleHealth.h"
 
 #define MY_TEST_MAX_EVENTS                                      1024
 #define MY_TEST_SERVER_ROLE_NAME                                "TcpServer"
@@ -248,6 +249,12 @@ _Server_Init(
         (void)ThreadPoolModuleInit(ServerThreadPool, 10, 5);
     }
     
+    ret = HealthModuleInit();
+    if (ret)
+    {
+        LogErr("HealthModuleInit failed!");
+    }
+    
 CommonReturn:
     if (!ret)
     {
@@ -267,6 +274,10 @@ _Server_Exit(
     void
     )
 {
+    // health
+    LogInfo("----------------- HealthModule exiting!-------------------");
+    HealthModuleExit();
+    LogInfo("----------------- HealthModule exited! -------------------");
     // msg handler
     LogInfo("----------------- MsgHandler exiting!-------------------");
     if (ServerMsgHandler)
@@ -312,7 +323,7 @@ main(
         LogErr("Server init failed! ret %d", ret);
         goto CommonReturn;
     }
-   
+    
     LogInfo("Joining thread: Server Worker Func");
     pthread_join(*ServerMsgHandler, NULL);
     

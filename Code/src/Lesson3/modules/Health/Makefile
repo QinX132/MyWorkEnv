@@ -1,10 +1,11 @@
 CC 		:= 	gcc
 CFLAGS 	:= 	-Wall -fPIC -Wextra -g
-TARGET	:= 	myEvent
+TARGET	:= 	myModuleHealth
 
-SRC_FILES := myEvent.c
+SRC_FILES := myModuleHealth.c
 
-CFLAGS	+= 	-I../../include/
+CFLAGS	+= 	-I../../include/ \
+			-I../../../third_party/libevent/include/
 
 OBJECTS := $(SRC_FILES:.c=.o)
 
