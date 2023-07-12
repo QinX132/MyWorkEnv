@@ -5,7 +5,8 @@ MODULE_ROOT = ../modules
 include Makefile.feat
 include Makefile.module
 
-SRC_FILE += $(WORK_ROOT)/tcpserver.c 
+SRC_FILE += $(WORK_ROOT)/tcpserver.c \
+			$(WORK_ROOT)/../modules/myModuleCommon.c 
 OBJ_FILE := $(SRC_FILE:.c=.o)
 
 CFLAGS 	+= 	-I$(WORK_ROOT)/../include/ \

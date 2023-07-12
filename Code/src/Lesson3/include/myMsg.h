@@ -1,6 +1,7 @@
 #ifndef _MY_MSG_H_
 #define _MY_MSG_H_
 #include "include.h"
+#include "myModuleCommon.h"
 
 #define MY_TEST_SESSION_ID_MAX_LEN          64
 #define MY_TEST_DISCONNECT_STRING           "disconnect"

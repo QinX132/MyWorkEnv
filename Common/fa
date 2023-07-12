@@ -1,0 +1,3 @@
+#!/bin/sh
+grep --exclude=tags --exclude=cscope.*  -i --color -nr "$*" *
+

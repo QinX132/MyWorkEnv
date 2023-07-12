@@ -2,6 +2,7 @@
 #define _MY_THREAD_POOL_H_
 
 #include "include.h"
+#include "myModuleCommon.h"
 #define THREAD_POOL_SIZE                                5
 #define TASK_QUEUE_SIZE                                 64
 
@@ -28,28 +29,25 @@ typedef struct _MY_TEST_THREAD_POOL{
 }
 MY_TEST_THREAD_POOL;
 
-void
+int
 ThreadPoolModuleInit(
-    MY_TEST_THREAD_POOL* ThreadPool,
     int ThreadPoolSize,
     int Timeout
     );
 
 void
 ThreadPoolModuleExit(
-    MY_TEST_THREAD_POOL* ThreadPool
+    void
     );
 
 int
 AddTaskIntoThread(
-    MY_TEST_THREAD_POOL* Thread_pool,
     void (*TaskFunc)(void*),
     void* TaskArg
     );
 
 int
 AddTaskIntoThreadAndWait(
-    MY_TEST_THREAD_POOL* ThreadPool,
     void (*TaskFunc)(void*),
     void* TaskArg
     );

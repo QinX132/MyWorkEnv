@@ -116,7 +116,7 @@ LogModuleStat(
     fseek(fp, 0, SEEK_END);
     size = ftell(fp);
 
-    LogInfo("<%s:[LogPrinted:%d, LogSize:%lld]>", HealthModuleNameByEnum(MY_MODULES_ENUM_LOG), sg_LogPrinted, size);
+    LogInfo("<%s:[LogPrinted:%d, LogSize:%lld]>", ModuleNameByEnum(MY_MODULES_ENUM_LOG), sg_LogPrinted, size);
 
 CommonReturn:
     if (fp)

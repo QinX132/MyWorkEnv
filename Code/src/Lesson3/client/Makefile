@@ -5,7 +5,8 @@ MODULE_ROOT = $(PWD)/../modules
 include Makefile.feat
 include Makefile.module
 
-SRC_FILE += $(WORK_ROOT)/tcpclient.c
+SRC_FILE += $(WORK_ROOT)/tcpclient.c \
+			$(WORK_ROOT)/../modules/myModuleCommon.c
 
 OBJ_FILE := $(SRC_FILE:.c=.o) 
 

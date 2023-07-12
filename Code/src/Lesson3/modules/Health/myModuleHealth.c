@@ -5,15 +5,8 @@ static const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX] =
     [MY_MODULES_ENUM_LOG]       =   LogModuleStat,
     [MY_MODULES_ENUM_MSG]       =   MsgModuleStat,
     [MY_MODULES_ENUM_TPOOL]     =   TPoolModuleStat,
-    [MY_MODULES_ENUM_CMDLINE]   =   NULL
-};
-
-static const char* sg_ModulesName[MY_MODULES_ENUM_MAX] = 
-{
-    [MY_MODULES_ENUM_LOG]       =   "Log",
-    [MY_MODULES_ENUM_MSG]       =   "Msg",
-    [MY_MODULES_ENUM_TPOOL]     =   "TPool",
-    [MY_MODULES_ENUM_CMDLINE]   =   "CmdLine"
+    [MY_MODULES_ENUM_CMDLINE]   =   NULL,
+    [MY_MODULES_ENUM_MHEALTH]   =   NULL
 };
 
 static int sg_ModuleReprtCBInterval[MY_MODULES_ENUM_MAX] = // seconds
@@ -21,27 +14,12 @@ static int sg_ModuleReprtCBInterval[MY_MODULES_ENUM_MAX] = // seconds
     [MY_MODULES_ENUM_LOG]       =   30,
     [MY_MODULES_ENUM_MSG]       =   30,
     [MY_MODULES_ENUM_TPOOL]     =   30,
-    [MY_MODULES_ENUM_CMDLINE]   =   30
+    [MY_MODULES_ENUM_CMDLINE]   =   30,
+    [MY_MODULES_ENUM_MHEALTH]   =   30
 };
 
 static pthread_t * sg_HealthModuleT = NULL;
 static BOOL sg_HeadlthModuleInited = FALSE;
-
-const char*
-HealthModuleNameByEnum(
-    int Module
-    )
-{
-    return (Module >= 0 && Module < (int)MY_MODULES_ENUM_MAX) ? sg_ModulesName[Module] : NULL;
-}
-
-StatReportCB
-HealthModuleStatCbByEnum(
-    int Module
-    )
-{
-    return (Module >= 0 && Module < (int)MY_MODULES_ENUM_MAX) ? sg_ModuleReprtCB[Module] : NULL;
-}
 
 static
 void 

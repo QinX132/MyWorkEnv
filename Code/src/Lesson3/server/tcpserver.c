@@ -3,15 +3,15 @@
 #include "myMsg.h"
 #include "myThreadPool.h"
 #include "myModuleHealth.h"
+#include "myModuleCommon.h"
 
 #define MY_TEST_MAX_EVENTS                                      1024
 #define MY_TEST_SERVER_ROLE_NAME                                "TcpServer"
-#define MY_TEST_SERVER_TID_FILE                                 "TcpServer.tid"
+#define MY_TEST_SERVER_TID_FILE                                 "/var/run/TcpServer.tid"
 
 static int sg_MsgId = 0;
 
 pthread_t *ServerMsgHandler = NULL;
-MY_TEST_THREAD_POOL *ServerThreadPool = NULL;
 
 static int
 _Server_CreateFd(
@@ -207,52 +207,29 @@ _Server_Init(
     )
 {
     int ret = 0;
-    pthread_attr_t attr;
-    BOOL attrInited = FALSE;
-
-    ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_SERVER_ROLE_NAME, strlen(MY_TEST_SERVER_ROLE_NAME));
+    
+    ret = MyModuleCommonInit(MY_TEST_LOG_FILE, MY_TEST_SERVER_ROLE_NAME, 10, 5);
     if (ret)
     {
-        printf("Init log failed!");
+        LogErr("MyModuleCommonInit failed!");
         goto CommonReturn;
     }
-    MsgModuleInit();
-    LogInfo("---------------- Server init start ----------------");
-
+    
     if (!ServerMsgHandler)
     {
         ServerMsgHandler = (pthread_t*)malloc(sizeof(pthread_t));
         if (!ServerMsgHandler)
         {
-            ret = ENOMEM;
+            ret = MY_ENOMEM;
             LogErr("Apply memory failed!");
             goto CommonReturn;
         }
-        pthread_attr_init(&attr);
-        attrInited = TRUE;
-        ret = pthread_create(ServerMsgHandler, &attr, _Server_WorkerFunc, NULL);
+        ret = pthread_create(ServerMsgHandler, NULL, _Server_WorkerFunc, NULL);
         if (ret) 
         {
             LogErr("Failed to create thread");
             goto CommonReturn;
         }
-    }
-    if (!ServerThreadPool)
-    {
-        ServerThreadPool = (MY_TEST_THREAD_POOL*)malloc(sizeof(MY_TEST_THREAD_POOL));
-        if (!ServerThreadPool)
-        {
-            ret = ENOMEM;
-            LogErr("Apply memory failed!");
-            goto CommonReturn;
-        }
-        (void)ThreadPoolModuleInit(ServerThreadPool, 10, 5);
-    }
-    
-    ret = HealthModuleInit();
-    if (ret)
-    {
-        LogErr("HealthModuleInit failed!");
     }
     
 CommonReturn:
@@ -264,8 +241,6 @@ CommonReturn:
     {
         LogErr("Server init failed! ret %d %s", ret, strerror(ret));
     }
-    if (attrInited)
-        pthread_attr_destroy(&attr);
     return ret;
 }
 
@@ -274,10 +249,6 @@ _Server_Exit(
     void
     )
 {
-    // health
-    LogInfo("----------------- HealthModule exiting!-------------------");
-    HealthModuleExit();
-    LogInfo("----------------- HealthModule exited! -------------------");
     // msg handler
     LogInfo("----------------- MsgHandler exiting!-------------------");
     if (ServerMsgHandler)
@@ -286,22 +257,8 @@ _Server_Exit(
         ServerMsgHandler = NULL;
     }
     LogInfo("----------------- MsgHandler exited! -------------------");
-    // TPool
-    LogInfo("----------------- TPoolModule exiting!------------------");
-    if (ServerThreadPool)
-    {
-        ThreadPoolModuleExit(ServerThreadPool);
-        free(ServerThreadPool);
-        ServerThreadPool = NULL;
-    }
-    LogInfo("----------------- TPoolModule exited! ------------------");
-    // msg
-    LogInfo("----------------- MsgModule exiting! -------------------");
-    MsgModuleExit();
-    LogInfo("----------------- MsgModule exited! --------------------");
-    // log
-    LogInfo("----------------- LogModule exiting! -------------------");
-    LogModuleExit();
+
+    MyModuleCommonExit();
 }
 
 void 

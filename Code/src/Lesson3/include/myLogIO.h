@@ -2,6 +2,7 @@
 #define _MY_LOG_IO_H_
 
 #include "include.h"
+#include "myModuleCommon.h"
 
 #define MY_TEST_ROLE_NAME_MAX_LEN               128
 #define MY_TEST_LOG_FILE                        "/tmp/mylog.log"

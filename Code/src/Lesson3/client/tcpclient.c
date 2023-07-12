@@ -6,10 +6,9 @@
 
 static uint32_t currentSessionId = 0;
 #define MY_TEST_CLIENT_ROLE_NAME                                "TcpClient"
-#define MY_TEST_CLIENT_TID_FILE                                 "TcpClient.tid"
+#define MY_TEST_CLIENT_TID_FILE                                 "/var/run/TcpClient.tid"
 
 pthread_t *ClientMsgHandler = NULL;
-MY_TEST_THREAD_POOL *ClientThreadPool = NULL;
 
 static int
 _Client_CreateFd(
@@ -142,17 +141,8 @@ _Client_Init(
             goto CommonReturn;
         }
     }
-    if (!ClientThreadPool)
-    {
-        ClientThreadPool = (MY_TEST_THREAD_POOL*)malloc(sizeof(MY_TEST_THREAD_POOL));
-        if (!ClientThreadPool)
-        {
-            ret = ENOMEM;
-            LogErr("Apply memory failed!");
-            goto CommonReturn;
-        }
-        (void)ThreadPoolModuleInit(ClientThreadPool, 10, 5);
-    }
+
+    (void)ThreadPoolModuleInit(10, 5);
     
     ret = HealthModuleInit();
     if (ret)
@@ -185,12 +175,7 @@ _Client_Exit(
     LogInfo("----------------- MsgHandler exited! -------------------");
     // TPool
     LogInfo("----------------- TPoolModule exiting!------------------");
-    if (ClientThreadPool)
-    {
-        ThreadPoolModuleExit(ClientThreadPool);
-        free(ClientThreadPool);
-        ClientThreadPool = NULL;
-    }
+    ThreadPoolModuleExit();
     LogInfo("----------------- TPoolModule exited! ------------------");
     // msg
     LogInfo("----------------- MsgModule exiting! -------------------");
