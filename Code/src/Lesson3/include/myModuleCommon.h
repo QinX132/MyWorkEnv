@@ -2,10 +2,6 @@
 #define _MY_MODULE_COMMON_H_
 
 #include "include.h"
-#include "myLogIO.h"
-#include "myMsg.h"
-#include "myThreadPool.h"
-#include "myModuleHealth.h"
 
 typedef enum _MY_MODULES_ENUM
 {
@@ -14,10 +10,22 @@ typedef enum _MY_MODULES_ENUM
     MY_MODULES_ENUM_TPOOL,
     MY_MODULES_ENUM_CMDLINE,
     MY_MODULES_ENUM_MHEALTH,
-    
+
+    MY_MODULES_ENUM_MASTER,
     MY_MODULES_ENUM_MAX
 }
 MY_MODULES_ENUM;
+
+typedef struct _MY_MODULES_INIT_PARAM
+{
+    char* LogFile;
+    char* RoleName;
+    int TPoolSize;
+    int TPoolTimeout;
+    int Argc;
+    char** Argv;
+}
+MY_MODULES_INIT_PARAM;
 
 const char*
 ModuleNameByEnum(
@@ -26,10 +34,7 @@ ModuleNameByEnum(
 
 int
 MyModuleCommonInit(
-    char* LogFile,
-    char* RoleName,
-    int TPoolSize,
-    int TPoolTimeout
+    MY_MODULES_INIT_PARAM ModuleInitParam
     );
 
 void

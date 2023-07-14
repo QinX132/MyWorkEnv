@@ -6,8 +6,7 @@
 #include "myModuleCommon.h"
 
 #define MY_TEST_MAX_EVENTS                                      1024
-#define MY_TEST_SERVER_ROLE_NAME                                "TcpServer"
-#define MY_TEST_SERVER_TID_FILE                                 "/var/run/TcpServer.tid"
+#define MY_TEST_SERVER_ROLE_NAME                                "tcpserver"
 
 static int sg_MsgId = 0;
 
@@ -110,14 +109,13 @@ _Server_WorkerFunc(
     int serverFd = -1;
     int ret = 0;
     MY_TEST_MSG *msg = NULL;
-    int serverListenFd[MY_TEST_MAX_CLIENT_NUM_PER_SERVER + 1] = {0};
     UNUSED(arg);
 
     serverFd = _Server_CreateFd();
     if (0 > serverFd)
     {
-    	LogErr("Create server socket failed");
-    	goto CommonReturn;
+        LogErr("Create server socket failed");
+        goto CommonReturn;
     }
 
     int epoll_fd = -1;
@@ -127,22 +125,22 @@ _Server_WorkerFunc(
     epoll_fd = epoll_create1(0);
     if (0 > epoll_fd)
     {
-    	LogErr("Create epoll socket failed %d", errno);
-    	goto CommonReturn;
+        LogErr("Create epoll socket failed %d", errno);
+        goto CommonReturn;
     }
-    event.events = EPOLLIN | EPOLLET;
+    event.events = EPOLLIN; // LT fd
     event.data.fd = serverFd;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serverFd, &event))
     {
-    	LogErr("Add to epoll socket failed %d", errno);
-    	goto CommonReturn;
+        LogErr("Add to epoll socket failed %d", errno);
+        goto CommonReturn;
     }
 
     int loop = 0;
     /* recv */
     while (1)
     {
-        event_count = epoll_wait(epoll_fd, waitEvents, MY_TEST_MAX_EVENTS, 0);
+        event_count = epoll_wait(epoll_fd, waitEvents, MY_TEST_MAX_EVENTS, 1000); 
         for(loop = 0; loop < event_count; loop ++)
         {
             if (waitEvents[loop].data.fd == serverFd)
@@ -159,13 +157,12 @@ _Server_WorkerFunc(
                     event.data.fd = tmpClientFd;
                     event.events = EPOLLIN | EPOLLET;  
                     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, tmpClientFd, &event);
-                    serverListenFd[0] ++;
-                    serverListenFd[serverListenFd[0]] = tmpClientFd;
                 }
             }
             else if (waitEvents[loop].events & EPOLLIN)
             {
-                msg = RecvMsg(waitEvents[loop].data.fd);
+                BOOL isPeerClosed = FALSE;
+                msg = RecvMsg(waitEvents[loop].data.fd, &isPeerClosed);
                 if (msg)
                 {
                     ret = _Server_HandleMsg(waitEvents[loop].data.fd, *msg);
@@ -177,7 +174,15 @@ _Server_WorkerFunc(
                 }
                 else
                 {
-                    LogErr("Recv in %d failed %d", waitEvents[loop].data.fd, ret);
+                    if (isPeerClosed)
+                    {
+                        LogInfo("Peer Socket exit: %d", waitEvents[loop].data.fd);
+                        close(waitEvents[loop].data.fd);
+                    }
+                    else
+                    {
+                        LogErr("Recv in %d failed %d", waitEvents[loop].data.fd, ret);
+                    }
                 }
             }
             else if (waitEvents[loop].events & EPOLLOUT)
@@ -188,11 +193,6 @@ _Server_WorkerFunc(
     }
 
 CommonReturn:
-    for (loop = 0; loop < serverListenFd[0] ; loop++)
-    {
-        if (serverListenFd[loop + 1] && serverListenFd[loop + 1] != -1)
-            close(serverListenFd[loop+1]);
-    }
     if (serverFd != -1)
         close(serverFd);
     if (epoll_fd != -1)
@@ -203,12 +203,21 @@ CommonReturn:
 
 static int
 _Server_Init(
-    void
+    int argc,
+    char *argv[]
     )
 {
     int ret = 0;
-    
-    ret = MyModuleCommonInit(MY_TEST_LOG_FILE, MY_TEST_SERVER_ROLE_NAME, 10, 5);
+    MY_MODULES_INIT_PARAM initParam;
+    memset(&initParam, 0, sizeof(initParam));
+
+    initParam.Argc = argc;
+    initParam.Argv = argv;
+    initParam.LogFile = MY_TEST_LOG_FILE;
+    initParam.RoleName = MY_TEST_SERVER_ROLE_NAME;
+    initParam.TPoolSize = 10;
+    initParam.TPoolTimeout = 5;
+    ret = MyModuleCommonInit(initParam);
     if (ret)
     {
         LogErr("MyModuleCommonInit failed!");
@@ -231,26 +240,17 @@ _Server_Init(
             goto CommonReturn;
         }
     }
-    
+    LogInfo("Server init success!");
 CommonReturn:
-    if (!ret)
-    {
-        LogInfo("Server init success!");
-    }
-    else
-    {
-        LogErr("Server init failed! ret %d %s", ret, strerror(ret));
-    }
     return ret;
 }
 
-static void
-_Server_Exit(
+void
+Server_Exit(
     void
     )
 {
     // msg handler
-    LogInfo("----------------- MsgHandler exiting!-------------------");
     if (ServerMsgHandler)
     {
         free(ServerMsgHandler);
@@ -259,22 +259,17 @@ _Server_Exit(
     LogInfo("----------------- MsgHandler exited! -------------------");
 
     MyModuleCommonExit();
-}
-
-void 
-test(void* a)
-{
-    UNUSED(a);
-    LogInfo("Test%d", *(int*)a);
+    system("killall "MY_TEST_SERVER_ROLE_NAME);
 }
 
 int
 main(
-    void
+    int argc,
+    char *argv[]
     )
 {
     int ret = 0;
-    ret = _Server_Init();
+    ret = _Server_Init(argc, argv);
     if (ret)
     {
         LogErr("Server init failed! ret %d", ret);
@@ -285,6 +280,6 @@ main(
     pthread_join(*ServerMsgHandler, NULL);
     
 CommonReturn:
-    _Server_Exit();
+    //Server_Exit();
     return ret;
 }

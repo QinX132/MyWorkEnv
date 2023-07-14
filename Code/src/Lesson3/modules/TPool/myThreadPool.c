@@ -3,9 +3,12 @@
 #include "myLogIO.h"
 
 #define MY_TEST_TASK_TIME_OUT_DEFAULT_VAL                       5 //seconds
-__thread MY_TEST_THREAD_POOL* sg_ThreadPool = NULL;
-__thread int sg_ThreadPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
-__thread BOOL sg_TPoolModuleInited = FALSE;
+//__thread 
+MY_TEST_THREAD_POOL* sg_ThreadPool = NULL;
+//__thread 
+int sg_ThreadPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
+//__thread 
+BOOL sg_TPoolModuleInited = FALSE;
 
 static int sg_TPoolTaskAdded = 0;
 static int sg_TPoolTaskSucceed = 0;
@@ -177,7 +180,6 @@ AddTaskIntoThread(
     pthread_mutex_unlock(&sg_ThreadPool->Lock);
     
 CommonReturn:
-    MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
     return ret;
 }
 
@@ -270,18 +272,36 @@ CommonReturn:
     return ret;
 }
 
-void
-TPoolModuleStat(
-    evutil_socket_t Fd,
-    short Event,
-    void *Arg
+int
+TPoolModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
     )
 {
-    UNUSED(Fd);
-    UNUSED(Event);
-    UNUSED(Arg);
-
-    LogInfo("<%s:[TaskAdded=%d, TaskSucceed=%d, TaskFailed=%d], ThreadNum=%d>",
-        ModuleNameByEnum(MY_MODULES_ENUM_TPOOL), sg_TPoolTaskAdded, sg_TPoolTaskSucceed, sg_TPoolTaskFailed,
-        sg_ThreadPool->ThreadNum);
+    int ret = 0;
+    int len = 0;
+    
+    if (!sg_TPoolModuleInited)
+    {
+        // protect sg_ThreadPool
+        goto CommonReturn;
+    }
+    len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
+        "<%s:[TaskAdded=%d, TaskSucceed=%d, TaskFailed=%d], ThreadNum=%d>",
+            ModuleNameByEnum(MY_MODULES_ENUM_TPOOL), sg_TPoolTaskAdded, sg_TPoolTaskSucceed, sg_TPoolTaskFailed,
+            sg_ThreadPool->ThreadNum);
+    if (len < 0 || len >= BuffMaxLen - *Offset)
+    {
+        ret = MY_ENOMEM;
+        LogErr("Too long Msg!");
+        goto CommonReturn;
+    }
+    else
+    {
+        *Offset += len;
+    }
+CommonReturn:
+    return ret;
 }
+

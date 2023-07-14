@@ -63,7 +63,7 @@ _Client_WorkerFunc(
     /* send */
     while (1)
     {
-	    char buf[4096] = {0};
+        char buf[4096] = {0};
         scanf("%s",buf);
         uint32_t stringLen = strlen(buf) + 1;
         if (strcasecmp(buf, MY_TEST_DISCONNECT_STRING) == 0)
@@ -92,7 +92,8 @@ _Client_WorkerFunc(
             goto CommonReturn;
         }
 
-        (void)RecvMsg(clientFd);
+        BOOL isPeerClosed = FALSE;
+        (void)RecvMsg(clientFd, &isPeerClosed);
 
         FreeMsg(msgToSend);
         msgToSend = NULL;
@@ -108,20 +109,26 @@ CommonReturn:
 
 static int
 _Client_Init(
-    char *PeerIp
+    int argc,
+    char *argv[]
     )
 {
     int ret = 0;
-    pthread_attr_t attr;
-    BOOL attrInited = FALSE;
+    MY_MODULES_INIT_PARAM initParam;
 
-    ret = LogModuleInit(MY_TEST_LOG_FILE, MY_TEST_CLIENT_ROLE_NAME, strlen(MY_TEST_CLIENT_ROLE_NAME));
+    initParam.Argc = argc;
+    initParam.Argv = argv;
+    initParam.LogFile = MY_TEST_LOG_FILE;
+    initParam.CmdRole = MY_TEST_CMDLINE_ROLE_SVR; // todo
+    initParam.RoleName = MY_TEST_CLIENT_ROLE_NAME;
+    initParam.TPoolSize = 10;
+    initParam.TPoolTimeout = 5;
+    ret = MyModuleCommonInit(initParam);
     if (ret)
     {
-        printf("Init log failed!");
+        LogErr("MyModuleCommonInit failed!");
         goto CommonReturn;
     }
-    MsgModuleInit();
     
     if (!ClientMsgHandler)
     {
@@ -132,39 +139,23 @@ _Client_Init(
             LogErr("Apply memory failed!");
             goto CommonReturn;
         }
-        pthread_attr_init(&attr);
-        attrInited = TRUE;
-        ret = pthread_create(ClientMsgHandler, &attr, _Client_WorkerFunc, (void*)PeerIp);
+        ret = pthread_create(ClientMsgHandler, NULL, _Client_WorkerFunc, (void*)PeerIp);
         if (ret) 
         {
             LogErr("Failed to create thread");
             goto CommonReturn;
         }
     }
-
-    (void)ThreadPoolModuleInit(10, 5);
-    
-    ret = HealthModuleInit();
-    if (ret)
-    {
-        LogErr("HealthModuleInit failed!");
-    }
     
 CommonReturn:
-    if (attrInited)
-        pthread_attr_destroy(&attr);
     return ret;
 }
 
-static void 
-_Client_Exit(
+void 
+Client_Exit(
     void
     )
 {
-    // health
-    LogInfo("----------------- HealthModule exiting!-------------------");
-    HealthModuleExit();
-    LogInfo("----------------- HealthModule exited! -------------------");
     // msg handler
     LogInfo("----------------- MsgHandler exiting!-------------------");
     if (ClientMsgHandler)
@@ -173,17 +164,7 @@ _Client_Exit(
         ClientMsgHandler = NULL;
     }
     LogInfo("----------------- MsgHandler exited! -------------------");
-    // TPool
-    LogInfo("----------------- TPoolModule exiting!------------------");
-    ThreadPoolModuleExit();
-    LogInfo("----------------- TPoolModule exited! ------------------");
-    // msg
-    LogInfo("----------------- MsgModule exiting! -------------------");
-    MsgModuleExit();
-    LogInfo("----------------- MsgModule exited! --------------------");
-    // log
-    LogInfo("----------------- LogModule exiting! -------------------");
-    LogModuleExit();
+    MyModuleCommonExit();
 }
 
 int main(
@@ -199,7 +180,7 @@ int main(
         goto CommonReturn;
     }
     
-    ret = _Client_Init(argv[1]);
+    ret = _Client_Init(argc, argv);
     if (ret)
     {
         LogErr("Client init failed! ret %d", ret);
@@ -210,6 +191,6 @@ int main(
     pthread_join(*ClientMsgHandler, NULL);
 
 CommonReturn:
-    _Client_Exit();
+    Client_Exit();
     return ret;
 }

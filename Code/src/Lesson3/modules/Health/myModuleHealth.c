@@ -1,21 +1,21 @@
 #include "myModuleHealth.h"
 
-static const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX] = 
+const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX] = 
 {
-    [MY_MODULES_ENUM_LOG]       =   LogModuleStat,
-    [MY_MODULES_ENUM_MSG]       =   MsgModuleStat,
-    [MY_MODULES_ENUM_TPOOL]     =   TPoolModuleStat,
+    [MY_MODULES_ENUM_LOG]       =   LogModuleCollectStat,
+    [MY_MODULES_ENUM_MSG]       =   MsgModuleCollectStat,
+    [MY_MODULES_ENUM_TPOOL]     =   TPoolModuleCollectStat,
     [MY_MODULES_ENUM_CMDLINE]   =   NULL,
     [MY_MODULES_ENUM_MHEALTH]   =   NULL
 };
 
 static int sg_ModuleReprtCBInterval[MY_MODULES_ENUM_MAX] = // seconds
 {
-    [MY_MODULES_ENUM_LOG]       =   30,
+    [MY_MODULES_ENUM_LOG]       =   10,
     [MY_MODULES_ENUM_MSG]       =   30,
     [MY_MODULES_ENUM_TPOOL]     =   30,
-    [MY_MODULES_ENUM_CMDLINE]   =   30,
-    [MY_MODULES_ENUM_MHEALTH]   =   30
+    [MY_MODULES_ENUM_CMDLINE]   =   0xff,
+    [MY_MODULES_ENUM_MHEALTH]   =   0xff
 };
 
 static pthread_t * sg_HealthModuleT = NULL;
@@ -29,6 +29,29 @@ _HealthModule_SigHandler(
 {
     if (sig == MY_TEST_KILL_SIGNAL)
         pthread_exit(NULL);
+}
+
+void
+_HealthModuleStatCommonTemplate(
+    evutil_socket_t Fd,
+    short Event,
+    void *Arg
+    )
+{
+    char logBuff[MY_TEST_BUFF_256] = {0};
+    int offset = 0;
+    
+    UNUSED(Arg);
+    UNUSED(Fd);
+    UNUSED(Event);
+
+    StatReportCB cb = (StatReportCB)Arg;
+    
+    if (cb(logBuff, sizeof(logBuff), &offset) == 0)
+    {
+        LogInfo("%s", logBuff);
+    }
+    return ;
 }
 
 static void*
@@ -57,7 +80,7 @@ _HealthModule_Entry(
         {
             tv.tv_sec = sg_ModuleReprtCBInterval[loop];
             tv.tv_usec = 0;
-            event_assign(&eventArr[loop], base, -1, EV_PERSIST, sg_ModuleReprtCB[loop], NULL);
+            event_assign(&eventArr[loop], base, -1, EV_PERSIST, _HealthModuleStatCommonTemplate, (void*)sg_ModuleReprtCB[loop]);
             event_add(&eventArr[loop], &tv);
         }
     }

@@ -137,4 +137,33 @@
 #define MY_ERFKILL              ERFKILL         /* Operation not possible due to RF-kill */
 #define MY_EHWPOISON            EHWPOISON       /* Memory page has hardware error */
 
+
+#ifndef _MY_ERR_NO_ENUM_AND_STRING_
+#define _MY_ERR_NO_ENUM_AND_STRING_
+
+typedef enum _MY_ERR_NO_ENUM
+{
+    MY_ERR_NO_START = 255,
+    MY_ERR_EXIT_WITH_SUCCESS = 256,
+    
+    MY_ERR_NO_ENUM_MAX = 257
+}
+MY_ERR_NO_ENUM;
+
+static const char* sg_myTestErrnoStr[MY_ERR_NO_ENUM_MAX - MY_ERR_NO_START] = 
+{
+    [MY_ERR_NO_START - MY_ERR_NO_START]             = "unused error: errno start",
+    [MY_ERR_EXIT_WITH_SUCCESS - MY_ERR_NO_START]    = "exit with success: not an error"
+};
+
+static inline const char*
+My_StrErr(
+    int Errno
+    )
+{
+    return Errno < MY_ERR_NO_START ? strerror(Errno) : 
+            (Errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[Errno - MY_ERR_NO_START] : "UnknownErr");
+}
+#endif /* _MY_ERR_NO_ENUM_AND_STRING_ */
+
 #endif

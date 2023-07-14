@@ -7,7 +7,9 @@
 #include "myThreadPool.h"
 #include "myModuleCommon.h"
 
-typedef void (*StatReportCB)(evutil_socket_t, short, void*);
+typedef int (*StatReportCB)(char*, int, int*);
+
+extern const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX];
 
 void
 HealthModuleExit(

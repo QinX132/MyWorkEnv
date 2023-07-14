@@ -1,5 +1,1 @@
-FEATURE_LOG = y
-FEATURE_MSG = y
-FEATURE_TPOOL = y
-FEATURE_MHEALTH = y
-
+../server/Makefile.feat

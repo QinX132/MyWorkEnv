@@ -6,10 +6,10 @@
 static char sg_RoleName[MY_TEST_ROLE_NAME_MAX_LEN] = {0};
 static char *sg_LogLevelStr [MY_TEST_LOG_LEVEL_MAX] = 
 {
-    [MY_TEST_LOG_LEVEL_INFO] = "Inf",
-    [MY_TEST_LOG_LEVEL_DEBUG] = "Dbg",
-    [MY_TEST_LOG_LEVEL_WARNING] = "Wrn",
-    [MY_TEST_LOG_LEVEL_ERROR] = "Err",
+    [MY_TEST_LOG_LEVEL_INFO] = "INFO",
+    [MY_TEST_LOG_LEVEL_DEBUG] = "DEBUG",
+    [MY_TEST_LOG_LEVEL_WARNING] = "WARN",
+    [MY_TEST_LOG_LEVEL_ERROR] = "ERROR",
 };
 static pthread_spinlock_t sg_LogSpinlock;
 static char sg_LogPath[128] = {0};
@@ -53,13 +53,13 @@ LogPrint(
     ...
     )
 {
+    va_list args;
 
     if (!sg_LogModuleInited)
     {
         return;
     }
     
-    va_list args;
     pthread_spin_lock(&sg_LogSpinlock);
     
     va_start(args, Fmt);
@@ -70,7 +70,7 @@ LogPrint(
     char timestamp[24] = {0};
     strftime(timestamp, sizeof(timestamp), "%Y/%m/%d_%H:%M:%S", tm_info);
     int milliseconds = tv.tv_usec / 1000;
-    fprintf(sg_LogFileFp, "[%s.%03d]%s<%s>[%s:%d]:", timestamp, milliseconds, sg_RoleName, sg_LogLevelStr[level], Function, Line);
+    fprintf(sg_LogFileFp, "[%s.%03d][%s][%s-%d]%s:", timestamp, milliseconds, sg_LogLevelStr[level], Function, Line, sg_RoleName);
     vfprintf(sg_LogFileFp, Fmt, args);
     va_end(args);
     fprintf(sg_LogFileFp, "\n");
@@ -91,22 +91,21 @@ LogModuleExit(
         pthread_spin_lock(&sg_LogSpinlock);
         pthread_spin_unlock(&sg_LogSpinlock);
         pthread_spin_destroy(&sg_LogSpinlock);
-        fclose(sg_LogFileFp);
+        // fclose(sg_LogFileFp);  //we do not close fp
     }
 }
 
-void
-LogModuleStat(
-    evutil_socket_t Fd,
-    short Event,
-    void *Arg
+int
+LogModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
     )
 {
-    long long size = 0;
+    int ret = 0;
     FILE* fp = fopen(sg_LogPath, "rb");
-    UNUSED(Arg);
-    UNUSED(Fd);
-    UNUSED(Event);
+    long long size = 0;
+    int len = 0;
     
     if (!fp) 
     {
@@ -115,9 +114,19 @@ LogModuleStat(
     }
     fseek(fp, 0, SEEK_END);
     size = ftell(fp);
-
-    LogInfo("<%s:[LogPrinted:%d, LogSize:%lld]>", ModuleNameByEnum(MY_MODULES_ENUM_LOG), sg_LogPrinted, size);
-
+    len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
+        "<%s:[LogPrinted:%d, LogSize:%lld]>", ModuleNameByEnum(MY_MODULES_ENUM_LOG), sg_LogPrinted, size);
+    if (len < 0 || len >= BuffMaxLen - *Offset)
+    {
+        ret = MY_ENOMEM;
+        LogErr("Too long Msg!");
+        goto CommonReturn;
+    }
+    else
+    {
+        *Offset += len;
+    }
+    
 CommonReturn:
     if (fp)
         fclose(fp);
@@ -135,5 +144,5 @@ CommonReturn:
         sg_LogFileFp = fopen(sg_LogPath, "a");
         pthread_spin_unlock(&sg_LogSpinlock);
     }
-    return ;
+    return ret;
 }

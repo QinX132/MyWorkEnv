@@ -45,11 +45,11 @@ LogModuleExit(
     void
     );
 
-void
-LogModuleStat(
-    evutil_socket_t Fd,
-    short Event,
-    void *Arg
+int
+LogModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
     );
 
 #endif /* _MY_LOG_IO_H_ */

@@ -13,7 +13,7 @@ OBJ_FILE := $(SRC_FILE:.c=.o)
 CFLAGS 	+= 	-I$(WORK_ROOT)/../include/ \
 			-I$(WORK_ROOT)/../../third_party/libevent/include/ 
 
-CFLAGS 	+= 	-Wall -Wextra -g
+CFLAGS 	+= 	-Wall -Wextra -g -DBUILD_RULE_CLIENT
 CFLAGS  +=  $(FEATURE_CFLAGS)
 
 LDFLAGS +=	$(FEATURE_LDFLAGS)

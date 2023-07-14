@@ -58,16 +58,17 @@ MsgModuleExit(
     void
     );
 
-void
-MsgModuleStat(
-    evutil_socket_t Fd,
-    short Event,
-    void *Arg
+int
+MsgModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
     );
 
 MY_TEST_MSG *
 RecvMsg(
-    int fd
+    int Fd,
+    BOOL *IsPeerClosed
     );
 
 MUST_CHECK

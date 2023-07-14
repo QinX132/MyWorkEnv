@@ -33,23 +33,38 @@ MsgModuleExit(
     }
 }
 
-void
-MsgModuleStat(
-    evutil_socket_t Fd,
-    short Event,
-    void *Arg
+int
+MsgModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
     )
 {
-    UNUSED(Arg);
-    UNUSED(Fd);
-    UNUSED(Event);
-    LogInfo("<%s:[MsgSend=%u, MsgSendBytes=%llu, MsgSendFailed=%u, MsgRecv=%u, MsgRecvBytes=%llu, MsgRecvFailed=%u]>",
+    int ret = 0;
+    int len = 0;
+    
+    len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
+        "<%s:[MsgSend=%u, MsgSendBytes=%llu, MsgSendFailed=%u, MsgRecv=%u, MsgRecvBytes=%llu, MsgRecvFailed=%u]>",
         ModuleNameByEnum(MY_MODULES_ENUM_MSG), MsgSend, MsgSendBytes, MsgSendFailed, MsgRecv, MsgRecvBytes, MsgRecvFailed);
+    if (len < 0 || len >= BuffMaxLen - *Offset)
+    {
+        ret = MY_ENOMEM;
+        LogErr("Too long Msg!");
+        goto CommonReturn;
+    }
+    else
+    {
+        *Offset += len;
+    }
+    
+CommonReturn:
+    return ret;
 }
 
 MY_TEST_MSG *
 RecvMsg(
-    int Fd
+    int Fd,
+    BOOL *IsPeerClosed
     )
 {
     int ret = 0;
@@ -83,6 +98,8 @@ RecvMsg(
         }
         else if (recvRet == 0)
         {
+            ret = MY_ERR_EXIT_WITH_SUCCESS; // peer close connection
+            *IsPeerClosed = TRUE;
             goto CommonReturn;
         }
         else
@@ -96,7 +113,7 @@ RecvMsg(
             else
             {
                 ret = -errno;
-                LogErr("%d:%s",errno,strerror(errno));
+                LogErr("%d:%s", errno, My_StrErr(errno));
                 goto CommonReturn;
             }
         }
@@ -125,7 +142,7 @@ RecvMsg(
         }
         else
         {
-            LogErr("%d:%s",errno,strerror(errno));
+            LogErr("%d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }
@@ -154,7 +171,7 @@ RecvMsg(
             else
             {
                 ret = -errno;
-                LogErr("%d:%s",errno,strerror(errno));
+                LogErr("%d:%s", errno, My_StrErr(errno));
                 goto CommonReturn;
             }
         }
@@ -174,6 +191,11 @@ CommonReturn:
             MsgRecvBytes += sizeof(MY_TEST_MSG_HEAD) + retMsg->Head.MsgContentLen + sizeof(MY_TEST_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgSpinlock);
+    }
+    if (ret && retMsg)
+    {
+        free(retMsg);
+        retMsg = NULL;
     }
     return retMsg;
 }
@@ -241,7 +263,7 @@ SendMsg(
         }
         else
         {
-            printf("Send failed %d:%s\n",errno,strerror(errno));
+            printf("Send failed %d:%s\n", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }
@@ -261,7 +283,7 @@ SendMsg(
         }
         else
         {
-            printf("Send failed %d:%s\n",errno,strerror(errno));
+            printf("Send failed %d:%s\n", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }
@@ -281,7 +303,7 @@ SendMsg(
         }
         else
         {
-            printf("Send failed %d:%s\n",errno,strerror(errno));
+            printf("Send failed %d:%s\n", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }
