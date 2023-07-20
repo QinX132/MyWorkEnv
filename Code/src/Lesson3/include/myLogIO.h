@@ -27,6 +27,7 @@ MY_TEST_LOG_LEVEL;
 int
 LogModuleInit(
     char *LogFilePath,
+    MY_TEST_LOG_LEVEL LogLevel,
     char *RoleName,
     size_t RoleNameLen
     );

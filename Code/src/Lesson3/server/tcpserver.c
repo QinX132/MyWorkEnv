@@ -7,6 +7,13 @@
 
 #define MY_TEST_MAX_EVENTS                                      1024
 #define MY_TEST_SERVER_ROLE_NAME                                "tcpserver"
+#define MY_TEST_SERVER_CONF_ROOT                                MY_TEST_SERVER_ROLE_NAME".conf"
+
+typedef struct {
+    MY_TEST_LOG_LEVEL LogLevel;
+    char LogFilePath[MY_TEST_BUFF_64];
+}
+SERVER_CONF_PARAM;
 
 static int sg_MsgId = 0;
 
@@ -183,6 +190,8 @@ _Server_WorkerFunc(
                     else
                     {
                         LogErr("Recv from %d failed %d", waitEvents[loop].data.fd, ret);
+                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                        close(waitEvents[loop].data.fd);
                     }
                 }
             }
@@ -205,6 +214,64 @@ CommonReturn:
     return NULL;
 }
 
+static int 
+_Server_ParseConf(
+    SERVER_CONF_PARAM *ServerConf
+    )
+{
+    int ret = 0;
+    FILE *fp = NULL;
+    char line[MY_TEST_BUFF_128] = {0};
+    char *ptr = NULL;
+    int len = 0;
+
+    fp = fopen(MY_TEST_SERVER_CONF_ROOT, "r");
+    if (!fp)
+    {
+        ret = MY_EIO;
+        goto CommonReturn;
+    }
+    while(fgets(line, sizeof(line), fp) != NULL)
+    {
+        if (line[0] == '#')
+        {
+            continue;
+        }
+        else if ((ptr = strstr(line, "LogLevel=")) != NULL)
+        {
+            ServerConf->LogLevel = atoi(ptr + strlen("LogLevel="));
+            if (!(ServerConf->LogLevel >= MY_TEST_LOG_LEVEL_INFO && ServerConf->LogLevel <= MY_TEST_LOG_LEVEL_ERROR))
+            {
+                ret = MY_EIO;
+                LogErr("Invalid loglevel!");
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "LogPath=")) != NULL)
+        {
+            len = snprintf(ServerConf->LogFilePath, sizeof(ServerConf->LogFilePath), "%s", ptr + strlen("LogPath="));
+            if (!len)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid logPath %s!", ptr + strlen("LogPath="));
+                goto CommonReturn;
+            }
+            if ('\n' == ServerConf->LogFilePath[len - 1])
+            {
+                ServerConf->LogFilePath[len - 1] = '\0';
+            }
+        }
+        memset(line, 0, sizeof(line));
+    }
+
+CommonReturn:
+    if (fp)
+    {
+        fclose(fp);
+    }
+    return ret;
+}
+
 static int
 _Server_Init(
     int argc,
@@ -213,18 +280,32 @@ _Server_Init(
 {
     int ret = 0;
     MY_MODULES_INIT_PARAM initParam;
+    SERVER_CONF_PARAM serverConf;
+    
     memset(&initParam, 0, sizeof(initParam));
+    memset(&serverConf, 0, sizeof(serverConf));
+
+    ret = _Server_ParseConf(&serverConf);
+    if (ret)
+    {
+        LogErr("Init conf failed!");
+        goto CommonReturn;
+    }
 
     initParam.Argc = argc;
     initParam.Argv = argv;
-    initParam.LogFile = MY_TEST_LOG_FILE;
+    initParam.LogFile = serverConf.LogFilePath;
+    initParam.LogLevel = serverConf.LogLevel;
     initParam.RoleName = MY_TEST_SERVER_ROLE_NAME;
     initParam.TPoolSize = 10;
     initParam.TPoolTimeout = 5;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {
-        LogErr("MyModuleCommonInit failed!");
+        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        {
+            LogErr("MyModuleCommonInit failed!");
+        }
         goto CommonReturn;
     }
     
@@ -276,7 +357,10 @@ main(
     ret = _Server_Init(argc, argv);
     if (ret)
     {
-        LogErr("Server init failed! ret %d", ret);
+        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        {
+            LogErr("Server init failed! ret %d", ret);
+        }
         goto CommonReturn;
     }
     

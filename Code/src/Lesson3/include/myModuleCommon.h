@@ -19,6 +19,7 @@ MY_MODULES_ENUM;
 typedef struct _MY_MODULES_INIT_PARAM
 {
     char* LogFile;
+    int LogLevel;
     char* RoleName;
     int TPoolSize;
     int TPoolTimeout;

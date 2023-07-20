@@ -11,7 +11,7 @@ const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX] =
 
 static int sg_ModuleReprtCBInterval[MY_MODULES_ENUM_MAX] = // seconds
 {
-    [MY_MODULES_ENUM_LOG]       =   10,
+    [MY_MODULES_ENUM_LOG]       =   30,
     [MY_MODULES_ENUM_MSG]       =   30,
     [MY_MODULES_ENUM_TPOOL]     =   30,
     [MY_MODULES_ENUM_CMDLINE]   =   0xff,

@@ -5,18 +5,17 @@
 #include "myModuleHealth.h"
 
 static uint32_t currentSessionId = 0;
-#define MY_TEST_CLIENT_ROLE_NAME                                "TcpClient"
-#define MY_TEST_CLIENT_CONF_ROOT                                "TcpClient.conf"
-#define MY_TEST_CLIENT_TID_FILE                                 "/var/run/TcpClient.tid"
+#define MY_TEST_CLIENT_ROLE_NAME                                "tcpclient"
+#define MY_TEST_CLIENT_CONF_ROOT                                MY_TEST_CLIENT_ROLE_NAME".conf"
 
 pthread_t *ClientMsgHandler = NULL;
 
 typedef struct {
     char PeerIp[MY_TEST_BUFF_64];
+    MY_TEST_LOG_LEVEL LogLevel;
+    char LogFilePath[MY_TEST_BUFF_64];
 }
 CLIENT_CONF_PARAM;
-
-static CLIENT_CONF_PARAM sg_ClientConfParam;
 
 static int
 _Client_CreateFd(
@@ -72,8 +71,9 @@ _Client_WorkerFunc(
     while (1)
     {
         char buf[4096] = {0};
-        scanf("%s",buf);
-        uint32_t stringLen = strlen(buf) + 1;
+        scanf("%s", buf);
+        uint32_t stringLen = strlen(buf);
+        LogInfo("Sending this: [%d][%s]", stringLen, buf);
         if (strcasecmp(buf, MY_TEST_DISCONNECT_STRING) == 0)
         {
             break;
@@ -117,13 +117,14 @@ CommonReturn:
 
 static int 
 _Client_ParseConf(
-    void
+    CLIENT_CONF_PARAM *ClientConf
     )
 {
     int ret = 0;
     FILE *fp = NULL;
     char line[MY_TEST_BUFF_128] = {0};
     char *ptr = NULL;
+    int len = 0;
 
     fp = fopen(MY_TEST_CLIENT_CONF_ROOT, "r");
     if (!fp)
@@ -133,15 +134,56 @@ _Client_ParseConf(
     }
     while(fgets(line, sizeof(line), fp) != NULL)
     {
-        memset(line, 0, sizeof(line));
-        
-        if ((ptr = strstr(line, "PeerIp=")) != NULL)
+        if (line[0] == '#')
         {
-            (void)snprintf(sg_ClientConfParam.PeerIp, sizeof(sg_ClientConfParam.PeerIp), "%s", ptr + strlen("PeerIp="));
+            continue;
         }
+        else if ((ptr = strstr(line, "PeerIp=")) != NULL)
+        {
+            len = snprintf(ClientConf->PeerIp, sizeof(ClientConf->PeerIp), "%s", ptr + strlen("PeerIp="));
+            if (len <= 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid PeerIp %s!", ptr + strlen("PeerIp="));
+                goto CommonReturn;
+            }
+            if ('\n' == ClientConf->PeerIp[len - 1])
+            {
+                ClientConf->PeerIp[len - 1] = '\0';
+            }
+        }
+        else if ((ptr = strstr(line, "LogLevel=")) != NULL)
+        {
+            ClientConf->LogLevel = atoi(ptr + strlen("LogLevel="));
+            if (!(ClientConf->LogLevel >= MY_TEST_LOG_LEVEL_INFO && ClientConf->LogLevel <= MY_TEST_LOG_LEVEL_ERROR))
+            {
+                ret = MY_EIO;
+                LogErr("Invalid loglevel!");
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "LogPath=")) != NULL)
+        {
+            len = snprintf(ClientConf->LogFilePath, sizeof(ClientConf->LogFilePath), "%s", ptr + strlen("LogPath="));
+            if (len <= 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid LogPath %s!", ptr + strlen("LogPath="));
+                goto CommonReturn;
+            }
+            if ('\n' == ClientConf->LogFilePath[len - 1])
+            {
+                ClientConf->LogFilePath[len - 1] = '\0';
+            }
+        }
+        memset(line, 0, sizeof(line));
     }
 
 CommonReturn:
+    if (fp)
+    {
+        fclose(fp);
+    }
     return ret;
 }
 
@@ -153,27 +195,32 @@ _Client_Init(
 {
     int ret = 0;
     MY_MODULES_INIT_PARAM initParam;
+    static CLIENT_CONF_PARAM clientConfParam;
     
     memset(&initParam, 0, sizeof(initParam));
-    memset(&sg_ClientConfParam, 0, sizeof(sg_ClientConfParam));
+    memset(&clientConfParam, 0, sizeof(clientConfParam));
 
-    ret = _Client_ParseConf();
+    ret = _Client_ParseConf(&clientConfParam);
     if (ret)
     {
-        printf("Init conf failed!\n");
+        LogErr("Init conf failed!");
         goto CommonReturn;
     }
 
     initParam.Argc = argc;
     initParam.Argv = argv;
-    initParam.LogFile = MY_TEST_LOG_FILE;
+    initParam.LogFile = clientConfParam.LogFilePath;
+    initParam.LogLevel = clientConfParam.LogLevel;
     initParam.RoleName = MY_TEST_CLIENT_ROLE_NAME;
     initParam.TPoolSize = 10;
     initParam.TPoolTimeout = 5;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {
-        LogErr("MyModuleCommonInit failed!");
+        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        {
+            LogErr("MyModuleCommonInit failed!");
+        }
         goto CommonReturn;
     }
     
@@ -186,7 +233,7 @@ _Client_Init(
             LogErr("Apply memory failed!");
             goto CommonReturn;
         }
-        ret = pthread_create(ClientMsgHandler, NULL, _Client_WorkerFunc, (void*)sg_ClientConfParam.PeerIp);
+        ret = pthread_create(ClientMsgHandler, NULL, _Client_WorkerFunc, (void*)clientConfParam.PeerIp);
         if (ret) 
         {
             LogErr("Failed to create thread");
@@ -224,7 +271,10 @@ int main(
     ret = _Client_Init(argc, argv);
     if (ret)
     {
-        LogErr("Client init failed! ret %d", ret);
+        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        {
+            LogErr("Client init failed! ret %d", ret);
+        }
         goto CommonReturn;
     }
     
@@ -232,6 +282,9 @@ int main(
     pthread_join(*ClientMsgHandler, NULL);
 
 CommonReturn:
-    Client_Exit();
+    if (ret != MY_ERR_EXIT_WITH_SUCCESS)
+    {
+        Client_Exit();
+    }
     return ret;
 }
