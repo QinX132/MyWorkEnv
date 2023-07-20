@@ -30,15 +30,14 @@ MyModuleCommonInit(
 {
     int ret = 0;
 
-    if (!ModuleInitParam.LogFile || !ModuleInitParam.RoleName || !ModuleInitParam.TPoolSize || 
-        !ModuleInitParam.TPoolTimeout || !strlen(ModuleInitParam.LogFile) || !strlen(ModuleInitParam.RoleName) ||
-        !ModuleInitParam.Argv)
+    UNUSED(ModuleInitParam);
+    
+#ifdef FEATURE_CMDLINE
+    if (!ModuleInitParam.RoleName || !strlen(ModuleInitParam.RoleName) || !ModuleInitParam.Argv)
     {
         ret = MY_EINVAL;
         goto CommonReturn;
     }
-    
-#ifdef FEATURE_CMDLINE
     ret = CmdLineModuleInit(ModuleInitParam.RoleName, ModuleInitParam.Argc, ModuleInitParam.Argv);
     if (ret)
     {
@@ -50,6 +49,11 @@ MyModuleCommonInit(
     }
 #endif
 #ifdef FEATURE_LOG
+    if (!ModuleInitParam.LogFile || !ModuleInitParam.RoleName || !strlen(ModuleInitParam.RoleName))
+    {
+        ret = MY_EINVAL;
+        goto CommonReturn;
+    }
     ret = LogModuleInit(ModuleInitParam.LogFile, ModuleInitParam.RoleName, strlen(ModuleInitParam.RoleName));
     if (ret)
     {
@@ -67,6 +71,11 @@ MyModuleCommonInit(
 #endif
 
 #ifdef FEATURE_TPOOL
+    if (!ModuleInitParam.TPoolSize || !ModuleInitParam.TPoolTimeout)
+    {
+        ret = MY_EINVAL;
+        goto CommonReturn;
+    }
     ret = ThreadPoolModuleInit(ModuleInitParam.TPoolSize, ModuleInitParam.TPoolTimeout);
     if (ret)
     {

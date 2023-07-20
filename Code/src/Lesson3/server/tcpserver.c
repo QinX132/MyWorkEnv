@@ -177,17 +177,21 @@ _Server_WorkerFunc(
                     if (isPeerClosed)
                     {
                         LogInfo("Peer Socket exit: %d", waitEvents[loop].data.fd);
+                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                         close(waitEvents[loop].data.fd);
                     }
                     else
                     {
-                        LogErr("Recv in %d failed %d", waitEvents[loop].data.fd, ret);
+                        LogErr("Recv from %d failed %d", waitEvents[loop].data.fd, ret);
                     }
                 }
             }
-            else if (waitEvents[loop].events & EPOLLOUT)
+            else if (waitEvents[loop].events & EPOLLERR || waitEvents[loop].events & EPOLLHUP)
             {
-                LogErr("Sending data to %d", waitEvents[loop].data.fd);
+                LogInfo("%d error happen!", waitEvents[loop].data.fd);
+                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                close(waitEvents[loop].data.fd);
+                continue;
             }
         }
     }

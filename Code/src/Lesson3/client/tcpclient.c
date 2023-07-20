@@ -6,9 +6,17 @@
 
 static uint32_t currentSessionId = 0;
 #define MY_TEST_CLIENT_ROLE_NAME                                "TcpClient"
+#define MY_TEST_CLIENT_CONF_ROOT                                "TcpClient.conf"
 #define MY_TEST_CLIENT_TID_FILE                                 "/var/run/TcpClient.tid"
 
 pthread_t *ClientMsgHandler = NULL;
+
+typedef struct {
+    char PeerIp[MY_TEST_BUFF_64];
+}
+CLIENT_CONF_PARAM;
+
+static CLIENT_CONF_PARAM sg_ClientConfParam;
 
 static int
 _Client_CreateFd(
@@ -107,6 +115,36 @@ CommonReturn:
     return NULL;
 }
 
+static int 
+_Client_ParseConf(
+    void
+    )
+{
+    int ret = 0;
+    FILE *fp = NULL;
+    char line[MY_TEST_BUFF_128] = {0};
+    char *ptr = NULL;
+
+    fp = fopen(MY_TEST_CLIENT_CONF_ROOT, "r");
+    if (!fp)
+    {
+        ret = MY_EIO;
+        goto CommonReturn;
+    }
+    while(fgets(line, sizeof(line), fp) != NULL)
+    {
+        memset(line, 0, sizeof(line));
+        
+        if ((ptr = strstr(line, "PeerIp=")) != NULL)
+        {
+            (void)snprintf(sg_ClientConfParam.PeerIp, sizeof(sg_ClientConfParam.PeerIp), "%s", ptr + strlen("PeerIp="));
+        }
+    }
+
+CommonReturn:
+    return ret;
+}
+
 static int
 _Client_Init(
     int argc,
@@ -115,11 +153,20 @@ _Client_Init(
 {
     int ret = 0;
     MY_MODULES_INIT_PARAM initParam;
+    
+    memset(&initParam, 0, sizeof(initParam));
+    memset(&sg_ClientConfParam, 0, sizeof(sg_ClientConfParam));
+
+    ret = _Client_ParseConf();
+    if (ret)
+    {
+        printf("Init conf failed!\n");
+        goto CommonReturn;
+    }
 
     initParam.Argc = argc;
     initParam.Argv = argv;
     initParam.LogFile = MY_TEST_LOG_FILE;
-    initParam.CmdRole = MY_TEST_CMDLINE_ROLE_SVR; // todo
     initParam.RoleName = MY_TEST_CLIENT_ROLE_NAME;
     initParam.TPoolSize = 10;
     initParam.TPoolTimeout = 5;
@@ -139,7 +186,7 @@ _Client_Init(
             LogErr("Apply memory failed!");
             goto CommonReturn;
         }
-        ret = pthread_create(ClientMsgHandler, NULL, _Client_WorkerFunc, (void*)PeerIp);
+        ret = pthread_create(ClientMsgHandler, NULL, _Client_WorkerFunc, (void*)sg_ClientConfParam.PeerIp);
         if (ret) 
         {
             LogErr("Failed to create thread");
@@ -173,12 +220,6 @@ int main(
     )
 {
     int ret = 0;
-    
-    if (argc != 2)
-    {
-        printf("Usage: ./tcpclient ip\n");
-        goto CommonReturn;
-    }
     
     ret = _Client_Init(argc, argv);
     if (ret)

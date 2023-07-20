@@ -233,6 +233,7 @@ _CmdServer_WorkerFunc(
                 else if (recvLen == 0)
                 {
                     LogInfo("Client closed connection.");
+                    epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                     close(waitEvents[loop].data.fd);
                 }
                 else
@@ -245,6 +246,8 @@ _CmdServer_WorkerFunc(
             else if (waitEvents[loop].events & EPOLLERR || waitEvents[loop].events & EPOLLHUP)
             {
                 LogInfo("%d error happen!", waitEvents[loop].data.fd);
+                epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                close(waitEvents[loop].data.fd);
                 continue;
             }
         }
