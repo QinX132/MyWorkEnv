@@ -297,7 +297,7 @@ _Server_Init(
     initParam.LogFile = serverConf.LogFilePath;
     initParam.LogLevel = serverConf.LogLevel;
     initParam.RoleName = MY_TEST_SERVER_ROLE_NAME;
-    initParam.TPoolSize = 10;
+    initParam.TPoolSize = 5;
     initParam.TPoolTimeout = 5;
     ret = MyModuleCommonInit(initParam);
     if (ret)
@@ -347,6 +347,28 @@ Server_Exit(
     system("killall "MY_TEST_SERVER_ROLE_NAME);
 }
 
+int ServerHealthMonitor(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
+    )
+{
+    int ret = 0;
+    int len = 0;
+    len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, "<%s:[%s]>", "Server", "Active");
+    *Offset += len;
+
+    return ret;
+}
+
+void ServerTPoolCb(
+    void* Arg
+    )
+{
+    UNUSED(Arg);
+    LogErr("Tpool");
+}
+
 int
 main(
     int argc,
@@ -363,6 +385,17 @@ main(
         }
         goto CommonReturn;
     }
+
+    sleep(10);
+    LogInfo("Adding health monitor...");
+    ret = AddHealthMonitor(ServerHealthMonitor, 5);
+    if (ret)
+    {
+        LogInfo("Add failed %d", ret);
+    }
+    
+    AddTaskIntoThread(ServerTPoolCb, NULL);
+    AddTaskIntoThreadAndWait(ServerTPoolCb, NULL);
     
     LogInfo("Joining thread: Server Worker Func");
     pthread_join(*ServerMsgHandler, NULL);

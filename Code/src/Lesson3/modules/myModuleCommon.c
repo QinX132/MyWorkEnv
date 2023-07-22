@@ -124,8 +124,7 @@ MyModuleCommonExit(
 #endif
 
 #ifdef FEATURE_LOG
+    LogInfo("----------------------------------------------------------");
     LogModuleExit();
-    LogInfo("--------------------- Log Module exit --------------------");
-    LogInfo("---------------------------------------------------------");
 #endif
 }

@@ -212,7 +212,7 @@ _Client_Init(
     initParam.LogFile = clientConfParam.LogFilePath;
     initParam.LogLevel = clientConfParam.LogLevel;
     initParam.RoleName = MY_TEST_CLIENT_ROLE_NAME;
-    initParam.TPoolSize = 10;
+    initParam.TPoolSize = 4;
     initParam.TPoolTimeout = 5;
     ret = MyModuleCommonInit(initParam);
     if (ret)

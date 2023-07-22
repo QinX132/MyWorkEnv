@@ -152,6 +152,7 @@ CommonReturn:
     if (size >= MY_TEST_LOG_MEX_LEN)
     {
         pthread_spin_lock(&sg_LogSpinlock);
+        fprintf(sg_LogFileFp, "Lograting!\n");
         fclose(sg_LogFileFp);
         char cmd[128] = {0};
         if (strlen(sg_LogPath))

@@ -21,4 +21,10 @@ HealthModuleInit(
     void
     );
 
+int
+AddHealthMonitor(
+    StatReportCB Cb,
+    int TimeIntervals
+    );
+
 #endif
