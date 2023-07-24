@@ -1,1 +1,6 @@
-../server/Makefile.feat
+FEATURE_LOG = y
+FEATURE_MSG = y
+FEATURE_TPOOL = y
+FEATURE_MHEALTH = y
+FEATURE_CMDLINE = n
+

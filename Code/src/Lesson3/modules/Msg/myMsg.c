@@ -106,14 +106,14 @@ RecvMsg(
         {
             if (errno == EWOULDBLOCK || errno == EAGAIN)
             {
-                ret = -errno;
-                LogErr("recv ends!");
+                ret = MY_ERR_EXIT_WITH_SUCCESS; // peer close connection
+                *IsPeerClosed = TRUE;
                 goto CommonReturn;
             }
             else
             {
-                ret = -errno;
-                LogErr("%d:%s", errno, My_StrErr(errno));
+                ret = errno;
+                LogErr("recvRet = %d, %d:%s", recvRet, errno, My_StrErr(errno));
                 goto CommonReturn;
             }
         }
@@ -263,7 +263,7 @@ SendMsg(
         }
         else
         {
-            printf("Send failed %d:%s\n", errno, My_StrErr(errno));
+            LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }
@@ -283,7 +283,7 @@ SendMsg(
         }
         else
         {
-            printf("Send failed %d:%s\n", errno, My_StrErr(errno));
+            LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }
@@ -303,7 +303,7 @@ SendMsg(
         }
         else
         {
-            printf("Send failed %d:%s\n", errno, My_StrErr(errno));
+            LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
     }

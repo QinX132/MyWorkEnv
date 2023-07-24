@@ -55,14 +55,14 @@ _CmdServer_Init(
     if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
     {
         ret = -1;
-        printf("Bind failed\n");
+        LogErr("Bind failed");
         fflush(stdout);
         goto CommonReturn;
     }
     if(0 > listen(serverFd, 5))
     {
         ret = -1;
-        printf("Listen failed");
+        LogErr("Listen failed");
         fflush(stdout);
         goto CommonReturn;
     }
@@ -72,7 +72,7 @@ _CmdServer_Init(
     if (0 > epoll_fd)
     {
         ret = -1;
-        printf("Create epoll socket failed %d\n", errno);
+        LogErr("Create epoll socket failed %d", errno);
         fflush(stdout);
         goto CommonReturn;
     }
@@ -81,7 +81,7 @@ _CmdServer_Init(
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serverFd, &event))
     {
         ret = -1;
-        printf("Add to epoll socket failed %d\n", errno);
+        LogErr("Add to epoll socket failed %d", errno);
         fflush(stdout);
         goto CommonReturn;
     }
@@ -90,7 +90,7 @@ CommonReturn:
     if (epoll_fd <= 0 || serverFd <= 0)
     {
         ret = MY_EIO;
-        printf("Create fd failed!\n");
+        LogErr("Create fd failed!");
     }
     else
     {
@@ -111,7 +111,7 @@ _CmdServerHandleMsg(
     
     if (strcasecmp(Buff, sg_CmdLineCont[MY_TEST_CMD_TYPE_STOP].Opt) == 0)
     {
-        len = send(Fd, "Process stopped.\n", sizeof("Process stopped.\n"), 0);
+        len = send(Fd, "Process stopped.", sizeof("Process stopped."), 0);
         if (len <= 0)
         {
             ret = MY_EIO;
@@ -138,12 +138,11 @@ _CmdServerHandleMsg(
                 statBuff[offset ++] = '\n';
             }
         }
-        statBuff[offset ++] = '\n';
         if (ret)
         {
             memset(statBuff, 0, sizeof(statBuff));
-            offset = strlen("Get module stats failed!\n");
-            strcpy(statBuff, "Get module stats failed!\n");
+            offset = strlen("Get module stats failed!");
+            strcpy(statBuff, "Get module stats failed!");
         }
         len = send(Fd, statBuff, offset + 1, 0);
         if (len <= 0)
@@ -179,7 +178,7 @@ _CmdServer_WorkerFunc(
     ret = _CmdServer_Init(&serverFd, &epollFd);
     if (ret)
     {
-        printf("Cmd server init failed %d\n", ret);
+        LogErr("Cmd server init failed %d", ret);
         fflush(stdout);
         return NULL;
     }
@@ -191,7 +190,7 @@ _CmdServer_WorkerFunc(
         event_count = epoll_wait(epollFd, waitEvents, MY_TEST_BUFF_128, 1000); //timeout 1s
         if (event_count == -1)
         {
-            LogErr("Epoll wait failed! (%d:%s)\n", errno, My_StrErr(errno));
+            LogErr("Epoll wait failed! (%d:%s)", errno, My_StrErr(errno));
             goto CommonReturn;
         }
         else if (event_count == 0)
@@ -233,6 +232,7 @@ _CmdServer_WorkerFunc(
                 else if (recvLen == 0)
                 {
                     LogInfo("Client closed connection.");
+                    epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                     close(waitEvents[loop].data.fd);
                 }
                 else
@@ -245,6 +245,8 @@ _CmdServer_WorkerFunc(
             else if (waitEvents[loop].events & EPOLLERR || waitEvents[loop].events & EPOLLHUP)
             {
                 LogInfo("%d error happen!", waitEvents[loop].data.fd);
+                epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                close(waitEvents[loop].data.fd);
                 continue;
             }
         }
@@ -303,14 +305,14 @@ _CmdClient_WorkerFunc(
     }
     if (strcasecmp(sg_CmdLineCont[MY_TEST_CMD_TYPE_START].Opt, Cmd) == 0)
     {
-        printf("\nAlready running!\n");
+        LogErr("Already running!");
         goto CommonReturn;
     }
 
     clientFd = socket(AF_INET, SOCK_STREAM, 0);
     if(0 > clientFd)
     {
-        LogErr("Create socket failed\n");
+        LogErr("Create socket failed");
         goto CommonReturn;
     }
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
@@ -321,7 +323,7 @@ _CmdClient_WorkerFunc(
     serverAddr.sin_addr.s_addr = serverIp;
     if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
     {
-        printf("Connect failed\n");
+        LogErr("Connect failed");
         goto CommonReturn;
     }
 
@@ -333,7 +335,7 @@ _CmdClient_WorkerFunc(
     else
     {
         ret = errno;
-        printf("Send cmdline failed, %d %s\n", ret, My_StrErr(ret));
+        LogErr("Send cmdline failed, %d %s", ret, My_StrErr(ret));
         goto CommonReturn;
     }
 
@@ -342,12 +344,12 @@ _CmdClient_WorkerFunc(
     if (ret > 0)
     {
         ret = 0;
-        printf("%s", recvBuff);
+        LogErr("%s", recvBuff);
     }
     else
     {
         ret = errno;
-        printf("Recv cmdline reply failed, %d %s\n", ret, My_StrErr(ret));
+        LogErr("Recv cmdline reply failed, %d %s", ret, My_StrErr(ret));
         goto CommonReturn;
     }
 
@@ -396,7 +398,7 @@ CmdLineModuleInit(
     {
         if (strcasecmp(Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_STOP].Opt) == 0)
         {
-            printf("\n%s is not running!\n\n", RoleName);
+            LogErr("%s is not running!", RoleName);
         }
         goto CommonErr;
     }
@@ -416,13 +418,13 @@ CmdLineModuleInit(
             if (!sg_CmdLineWorker)
             {
                 ret = MY_ENOMEM;
-                printf("Apply memory failed!\n");
+                LogErr("Apply memory failed!");
                 goto CommonReturn;
             }
             ret = pthread_create(sg_CmdLineWorker, NULL, _CmdServer_WorkerFunc, NULL);
             if (ret) 
             {
-                printf("Failed to create thread\n");
+                LogErr("Failed to create thread");
                 goto CommonReturn;
             }
             break;
@@ -432,7 +434,7 @@ CmdLineModuleInit(
             goto CommonReturn;
         default:
             ret = EINVAL;
-            LogErr("Role %d invalid!\n", sg_CmdLineRole);
+            LogErr("Role %d invalid!", sg_CmdLineRole);
             break;
     }
     goto CommonReturn;

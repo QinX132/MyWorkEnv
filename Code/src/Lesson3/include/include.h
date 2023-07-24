@@ -24,11 +24,12 @@
 #include <sys/syscall.h>
 #include <stdint.h>
 #include <signal.h>
-#include<sys/file.h>
+#include <sys/file.h>
 
 #include "event2/event.h"
 #include "event2/event_struct.h"
 #include "event2/util.h"
+#include "event2/thread.h"
 
 #include "myErrno.h"
 

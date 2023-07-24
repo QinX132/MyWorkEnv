@@ -30,30 +30,34 @@ MyModuleCommonInit(
 {
     int ret = 0;
 
-    if (!ModuleInitParam.LogFile || !ModuleInitParam.RoleName || !ModuleInitParam.TPoolSize || 
-        !ModuleInitParam.TPoolTimeout || !strlen(ModuleInitParam.LogFile) || !strlen(ModuleInitParam.RoleName) ||
-        !ModuleInitParam.Argv)
+    UNUSED(ModuleInitParam);
+    
+#ifdef FEATURE_CMDLINE
+    if (!ModuleInitParam.RoleName || !strlen(ModuleInitParam.RoleName) || !ModuleInitParam.Argv)
     {
         ret = MY_EINVAL;
         goto CommonReturn;
     }
-    
-#ifdef FEATURE_CMDLINE
     ret = CmdLineModuleInit(ModuleInitParam.RoleName, ModuleInitParam.Argc, ModuleInitParam.Argv);
     if (ret)
     {
         if (MY_ERR_EXIT_WITH_SUCCESS != ret)
         {
-            printf("Cmd line init failed!");
+            LogErr("Cmd line init failed! %d %s", ret, My_StrErr(ret));
         }
         goto CommonReturn;
     }
 #endif
 #ifdef FEATURE_LOG
-    ret = LogModuleInit(ModuleInitParam.LogFile, ModuleInitParam.RoleName, strlen(ModuleInitParam.RoleName));
+    if (!ModuleInitParam.LogFile || !strlen(ModuleInitParam.LogFile) || !ModuleInitParam.RoleName || !strlen(ModuleInitParam.RoleName))
+    {
+        ret = MY_EINVAL;
+        goto CommonReturn;
+    }
+    ret = LogModuleInit(ModuleInitParam.LogFile, ModuleInitParam.LogLevel, ModuleInitParam.RoleName, strlen(ModuleInitParam.RoleName));
     if (ret)
     {
-        printf("Init log failed!");
+        LogErr("Init log failed! %d %s", ret, My_StrErr(ret));
         goto CommonReturn;
     }
     LogInfo("---------------------------------------------------------");
@@ -67,10 +71,15 @@ MyModuleCommonInit(
 #endif
 
 #ifdef FEATURE_TPOOL
+    if (!ModuleInitParam.TPoolSize || !ModuleInitParam.TPoolTimeout)
+    {
+        ret = MY_EINVAL;
+        goto CommonReturn;
+    }
     ret = ThreadPoolModuleInit(ModuleInitParam.TPoolSize, ModuleInitParam.TPoolTimeout);
     if (ret)
     {
-        LogErr("Init TPool failed!");
+        LogErr("Init TPool failed! %d %s", ret, My_StrErr(ret));
         goto CommonReturn;
     }
     LogInfo("---------------- TPool Module init success ---------------");
@@ -80,7 +89,7 @@ MyModuleCommonInit(
     ret = HealthModuleInit();
     if (ret)
     {
-        LogErr("Init HealthModule failed!");
+        LogErr("Init HealthModule failed! %d %s", ret, My_StrErr(ret));
         goto CommonReturn;
     }
     LogInfo("---------------- Health Module init success --------------");
@@ -115,8 +124,7 @@ MyModuleCommonExit(
 #endif
 
 #ifdef FEATURE_LOG
+    LogInfo("----------------------------------------------------------");
     LogModuleExit();
-    LogInfo("--------------------- Log Module exit --------------------");
-    LogInfo("---------------------------------------------------------");
 #endif
 }

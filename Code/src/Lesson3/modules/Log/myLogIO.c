@@ -12,7 +12,8 @@ static char *sg_LogLevelStr [MY_TEST_LOG_LEVEL_MAX] =
     [MY_TEST_LOG_LEVEL_ERROR] = "ERROR",
 };
 static pthread_spinlock_t sg_LogSpinlock;
-static char sg_LogPath[128] = {0};
+static char sg_LogPath[MY_TEST_BUFF_128] = {0};
+static MY_TEST_LOG_LEVEL sg_LogLevel = MY_TEST_LOG_LEVEL_INFO;
 static BOOL sg_LogModuleInited = FALSE;
 static FILE* sg_LogFileFp = NULL;
 
@@ -21,6 +22,7 @@ static int sg_LogPrinted = 0;
 int
 LogModuleInit(
     char *LogFilePath,
+    MY_TEST_LOG_LEVEL LogLevel,
     char *RoleName,
     size_t RoleNameLen
     )
@@ -29,16 +31,23 @@ LogModuleInit(
 
     if (RoleNameLen >= MY_TEST_ROLE_NAME_MAX_LEN || !LogFilePath || !RoleName)
     {
-        ret = -1;
-        printf("Too long role name!\n");
+        ret = MY_EINVAL;
+        LogErr("Too long role name!");
         goto CommonReturn;
     }
     strncpy(sg_RoleName, RoleName, RoleNameLen);
     strcpy(sg_LogPath, LogFilePath);
+    sg_LogLevel = LogLevel;
     pthread_spin_init(&sg_LogSpinlock, PTHREAD_PROCESS_PRIVATE);
-    sg_LogModuleInited = TRUE;
 
     sg_LogFileFp = fopen(sg_LogPath, "a");
+    if (!sg_LogFileFp)
+    {
+        ret = MY_EIO;
+        LogErr("Open file failed!");
+        goto CommonReturn;
+    }
+    sg_LogModuleInited = TRUE;
     
 CommonReturn:
     return ret;
@@ -55,8 +64,17 @@ LogPrint(
 {
     va_list args;
 
+    if (level < (int)sg_LogLevel)
+    {
+        return;
+    }
+
     if (!sg_LogModuleInited)
     {
+        va_start(args, Fmt);
+        vprintf(Fmt, args);
+        va_end(args);
+        printf("\n");
         return;
     }
     
@@ -134,6 +152,7 @@ CommonReturn:
     if (size >= MY_TEST_LOG_MEX_LEN)
     {
         pthread_spin_lock(&sg_LogSpinlock);
+        fprintf(sg_LogFileFp, "Lograting!\n");
         fclose(sg_LogFileFp);
         char cmd[128] = {0};
         if (strlen(sg_LogPath))
