@@ -61,54 +61,54 @@ CommonReturn:
     return ret;
 }
 
-MY_TEST_MSG *
+int
 RecvMsg(
     int Fd,
-    BOOL *IsPeerClosed
+    __inout MY_TEST_MSG * RetMsg
     )
 {
     int ret = 0;
-    MY_TEST_MSG *retMsg = NULL;
     int recvLen = 0;
     int currentLen = 0;
     int recvRet = 0;
+    char recvLogBuff[MY_TEST_BUFF_1024] = {0};
+    size_t recvLogLen = 0;
+    size_t len = 0;
 
     if (!sg_MsgModuleInited)
     {
         goto CommonReturn;
     }
-    
-    retMsg = (MY_TEST_MSG*)malloc(sizeof(MY_TEST_MSG));
-    if (!retMsg)
+
+    if (!RetMsg)
     {
-        ret = -ENOMEM;
-        LogErr("Apply memory failed!");
+        ret = MY_EINVAL;
+        LogErr("NULL ptr!");
         goto CommonReturn;
     }
-    memset(retMsg, 0, sizeof(MY_TEST_MSG));
+    
+    memset(RetMsg, 0, sizeof(MY_TEST_MSG));
     // recv head
     recvLen = sizeof(MY_TEST_MSG_HEAD);
     currentLen = 0;
     for(; currentLen < recvLen;)
     {
-        recvRet = recv(Fd, ((char*)retMsg) + currentLen, recvLen - currentLen, 0);
+        recvRet = recv(Fd, ((char*)RetMsg) + currentLen, recvLen - currentLen, 0);
         if (recvRet > 0)
         {
             currentLen += recvRet;
         }
         else if (recvRet == 0)
         {
-            ret = MY_ERR_EXIT_WITH_SUCCESS; // peer close connection
-            *IsPeerClosed = TRUE;
+            ret = MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
         {
             if (errno == EWOULDBLOCK || errno == EAGAIN)
             {
-                ret = MY_ERR_EXIT_WITH_SUCCESS; // peer close connection
-                *IsPeerClosed = TRUE;
-                goto CommonReturn;
+                // should retry
+                continue;
             }
             else
             {
@@ -118,65 +118,102 @@ RecvMsg(
             }
         }
     }
-    LogInfo("MsgId=%llu, MsgContentLen=%u, MagicVer=%u, SessionId=%u", 
-        retMsg->Head.MsgId, retMsg->Head.MsgContentLen, retMsg->Head.MagicVer, retMsg->Head.SessionId);
+    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "Recv Msg: MsgId=%llu MsgContentLen=%u MagicVer=%u, SessionId=%u ", 
+                RetMsg->Head.MsgId, RetMsg->Head.MsgContentLen, RetMsg->Head.MagicVer, RetMsg->Head.SessionId);
+    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    {
+        ret = MY_ENOBUFS;
+        LogErr("Too long msg!");
+        goto CommonReturn;
+    }
+    recvLogLen += len;
     // recv content
-    recvLen = retMsg->Head.MsgContentLen;
+    recvLen = RetMsg->Head.MsgContentLen;
     if (unlikely(recvLen > (int)sizeof(MY_TEST_MSG_CONT)))
     {
-        LogErr("Too long cont len %u", retMsg->Head.MsgContentLen);
+        LogErr("Too long cont len %u", RetMsg->Head.MsgContentLen);
         ret = EINVAL;
         goto CommonReturn;
     }
     currentLen = 0;
     for(; currentLen < recvLen;)
     {
-        recvRet = recv(Fd, ((char*)retMsg + sizeof(MY_TEST_MSG_HEAD)) + currentLen, recvLen - currentLen, 0);
+        recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_TEST_MSG_HEAD)) + currentLen, recvLen - currentLen, 0);
         if (recvRet > 0)
         {
             currentLen += recvRet;
         }
         else if (recvRet == 0)
         {
-            goto CommonReturn;
-        }
-        else
-        {
-            LogErr("%d:%s", errno, My_StrErr(errno));
-            goto CommonReturn;
-        }
-    }
-    LogInfo("VarLenCont=%s", retMsg->Cont.VarLenCont);
-    // recv tail
-    recvLen = sizeof(MY_TEST_MSG_TAIL);
-    currentLen = 0;
-    for(; currentLen < recvLen;)
-    {
-        recvRet = recv(Fd, ((char*)retMsg + sizeof(MY_TEST_MSG_HEAD) + sizeof(MY_TEST_MSG_CONT)) + currentLen, recvLen - currentLen, 0);
-        if (recvRet > 0)
-        {
-            currentLen += recvRet;
-        }
-        else if (recvRet == 0)
-        {
+            ret = MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
         {
             if (errno == EWOULDBLOCK || errno == EAGAIN)
             {
-                LogErr("recv ends!");
-                goto CommonReturn;
+                // should retry
+                continue;
             }
             else
             {
-                ret = -errno;
-                LogErr("%d:%s", errno, My_StrErr(errno));
+                ret = errno;
+                LogErr("recvRet = %d, %d:%s", recvRet, errno, My_StrErr(errno));
                 goto CommonReturn;
             }
         }
     }
-    LogInfo("TimeStamp=%llu", retMsg->Tail.TimeStamp);
+    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "VarLenCont=\"%s\" ", RetMsg->Cont.VarLenCont);
+    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    {
+        ret = MY_ENOBUFS;
+        LogErr("Too long msg!");
+        goto CommonReturn;
+    }
+    recvLogLen += len;
+    // recv tail
+    recvLen = sizeof(MY_TEST_MSG_TAIL);
+    currentLen = 0;
+    for(; currentLen < recvLen;)
+    {
+        recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_TEST_MSG_HEAD) + sizeof(MY_TEST_MSG_CONT)) + currentLen, recvLen - currentLen, 0);
+        if (recvRet > 0)
+        {
+            currentLen += recvRet;
+        }
+        else if (recvRet == 0)
+        {
+            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            goto CommonReturn;
+        }
+        else
+        {
+            if (errno == EWOULDBLOCK || errno == EAGAIN)
+            {
+                // should retry
+                continue;
+            }
+            else
+            {
+                ret = errno;
+                LogErr("recvRet = %d, %d:%s", recvRet, errno, My_StrErr(errno));
+                goto CommonReturn;
+            }
+        }
+    }
+    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "TimeStamp=%llu", RetMsg->Tail.TimeStamp);
+    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    {
+        ret = MY_ENOBUFS;
+        LogErr("Too long msg!");
+        goto CommonReturn;
+    }
+    recvLogLen += len;
+
+    LogInfo("%s", recvLogBuff);
 CommonReturn:
     if (sg_MsgModuleInited)
     {
@@ -188,16 +225,11 @@ CommonReturn:
         else
         {
             MsgRecv ++;
-            MsgRecvBytes += sizeof(MY_TEST_MSG_HEAD) + retMsg->Head.MsgContentLen + sizeof(MY_TEST_MSG_TAIL);
+            MsgRecvBytes += sizeof(MY_TEST_MSG_HEAD) + RetMsg->Head.MsgContentLen + sizeof(MY_TEST_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgSpinlock);
     }
-    if (ret && retMsg)
-    {
-        free(retMsg);
-        retMsg = NULL;
-    }
-    return retMsg;
+    return ret;
 }
 
 MUST_CHECK
@@ -242,11 +274,15 @@ SendMsg(
     int sendLen = sizeof(MY_TEST_MSG_HEAD);
     int currentLen = 0;
     int sendRet = 0;
+    char recvLogBuff[MY_TEST_BUFF_1024] = {0};
+    size_t recvLogLen = 0;
+    size_t len = 0;
     
     if (!sg_MsgModuleInited)
     {
         goto CommonReturn;
     }
+    //send msg header
     sendLen = sizeof(MY_TEST_MSG_HEAD);
     currentLen = 0;
     for(; currentLen < sendLen;)
@@ -258,7 +294,7 @@ SendMsg(
         }
         else if (sendRet == 0)
         {
-            ret = -errno;
+            ret = MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -267,6 +303,17 @@ SendMsg(
             goto CommonReturn;
         }
     }
+    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "Send Msg: MsgId=%llu MsgContentLen=%u MagicVer=%u, SessionId=%u ", 
+                Msg.Head.MsgId, Msg.Head.MsgContentLen, Msg.Head.MagicVer, Msg.Head.SessionId);
+    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    {
+        ret = MY_ENOBUFS;
+        LogErr("Too long msg!");
+        goto CommonReturn;
+    }
+    recvLogLen += len;
+    // send msg content
     sendLen = Msg.Head.MsgContentLen;
     currentLen = 0;
     for(; currentLen < sendLen;)
@@ -278,7 +325,7 @@ SendMsg(
         }
         else if (sendRet == 0)
         {
-            ret = -errno;
+            ret = MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -287,6 +334,16 @@ SendMsg(
             goto CommonReturn;
         }
     }
+    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "VarLenCont=\"%s\" ", Msg.Cont.VarLenCont);
+    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    {
+        ret = MY_ENOBUFS;
+        LogErr("Too long msg!");
+        goto CommonReturn;
+    }
+    recvLogLen += len;
+    // send msg tail
     sendLen = sizeof(MY_TEST_MSG_TAIL);
     currentLen = 0;
     for(; currentLen < sendLen;)
@@ -298,7 +355,7 @@ SendMsg(
         }
         else if (sendRet == 0)
         {
-            ret = -errno;
+            ret = MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -307,6 +364,17 @@ SendMsg(
             goto CommonReturn;
         }
     }
+    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "TimeStamp=%llu", Msg.Tail.TimeStamp);
+    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    {
+        ret = MY_ENOBUFS;
+        LogErr("Too long msg!");
+        goto CommonReturn;
+    }
+    recvLogLen += len;
+
+    LogInfo("%s", recvLogBuff);
 
 CommonReturn:
     if (sg_MsgModuleInited)

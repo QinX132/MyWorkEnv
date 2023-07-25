@@ -72,8 +72,7 @@ _Client_WorkerFunc(
     {
         char buf[4096] = {0};
         scanf("%s", buf);
-        uint32_t stringLen = strlen(buf);
-        LogInfo("Sending this: [%d][%s]", stringLen, buf);
+        uint32_t stringLen = strlen(buf) + 1;
         if (strcasecmp(buf, MY_TEST_DISCONNECT_STRING) == 0)
         {
             break;
@@ -99,19 +98,19 @@ _Client_WorkerFunc(
             LogErr("Send msg failed!");
             goto CommonReturn;
         }
-
-        BOOL isPeerClosed = FALSE;
-        (void)RecvMsg(clientFd, &isPeerClosed);
+        
+        MY_TEST_MSG msg;
+        (void)RecvMsg(clientFd, &msg);
 
         FreeMsg(msgToSend);
         msgToSend = NULL;
     }
 
 CommonReturn:
-    if (clientFd != -1)
+    if (clientFd > 0)
         close(clientFd);
     if (msgToSend)
-        free(msgToSend);
+        FreeMsg(msgToSend);
     return NULL;
 }
 

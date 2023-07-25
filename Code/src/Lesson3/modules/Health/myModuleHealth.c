@@ -20,7 +20,7 @@ const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX] =
 
 static int sg_ModuleReprtCBInterval[MY_MODULES_ENUM_MAX] = // seconds
 {
-    [MY_MODULES_ENUM_LOG]       =   10,
+    [MY_MODULES_ENUM_LOG]       =   30,
     [MY_MODULES_ENUM_MSG]       =   30,
     [MY_MODULES_ENUM_TPOOL]     =   30,
     [MY_MODULES_ENUM_CMDLINE]   =   0xff,
@@ -130,10 +130,6 @@ _HealthModule_Entry(
     event_base_dispatch(sg_HealthEventBase);
     
 CommonReturn:
-    if(NULL != sg_HealthEventBase)
-    {
-        event_base_free(sg_HealthEventBase);
-    }
     pthread_exit(NULL);
 }
 
@@ -203,11 +199,14 @@ HealthModuleExit(
         sg_HealthModuleT = NULL;
         sg_HealthEventBase = NULL;
         pthread_spin_destroy(&sg_HealthSpinlock);
-        MY_LIST_ALL(&sg_HealthListHead, loop, tmpNode, HEALTH_MODULE_EVENT_NODE, ListNode)
+        if (!MY_LIST_IS_EMPTY(&sg_HealthListHead))
         {
-            MY_LIST_DEL_NODE(&loop->ListNode, &sg_HealthListHead);
-            free(loop);
-            loop = NULL;
+            MY_LIST_ALL(&sg_HealthListHead, loop, tmpNode, HEALTH_MODULE_EVENT_NODE, ListNode)
+            {
+                MY_LIST_DEL_NODE(&loop->ListNode, &sg_HealthListHead);
+                free(loop);
+                loop = NULL;
+            }
         }
     }
 }
