@@ -21,6 +21,7 @@ _ThreadPoolFunction(
 {
     MY_TEST_THREAD_POOL* thread_pool = (MY_TEST_THREAD_POOL*)arg;
     MY_TEST_THREAD_TASK task;
+    LogInfo("Thread worker %lu entering...", pthread_self());
 
     while (!thread_pool->Exit) 
     {

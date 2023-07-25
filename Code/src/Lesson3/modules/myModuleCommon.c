@@ -32,6 +32,7 @@ MyModuleCommonInit(
 
     UNUSED(ModuleInitParam);
     
+    
 #ifdef FEATURE_CMDLINE
     if (!ModuleInitParam.RoleName || !strlen(ModuleInitParam.RoleName) || !ModuleInitParam.Argv)
     {
@@ -60,6 +61,8 @@ MyModuleCommonInit(
         LogErr("Init log failed! %d %s", ret, My_StrErr(ret));
         goto CommonReturn;
     }
+    LogInfo("---------------------------------------------------------");
+    LogInfo("|-------------------%12s -----------------------|", ModuleInitParam.RoleName);
     LogInfo("---------------------------------------------------------");
     LogInfo("---------------- Log Module init success ----------------");
 #endif

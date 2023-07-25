@@ -65,10 +65,10 @@ MsgModuleCollectStat(
     int* Offset
     );
 
-MY_TEST_MSG *
+int
 RecvMsg(
     int Fd,
-    BOOL *IsPeerClosed
+    __inout MY_TEST_MSG * RetMsg
     );
 
 MUST_CHECK

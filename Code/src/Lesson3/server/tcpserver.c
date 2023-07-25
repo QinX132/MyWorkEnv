@@ -115,7 +115,7 @@ _Server_WorkerFunc(
 {
     int serverFd = -1;
     int ret = 0;
-    MY_TEST_MSG *msg = NULL;
+    MY_TEST_MSG msg;
     UNUSED(arg);
 
     serverFd = _Server_CreateFd();
@@ -168,11 +168,10 @@ _Server_WorkerFunc(
             }
             else if (waitEvents[loop].events & EPOLLIN)
             {
-                BOOL isPeerClosed = FALSE;
-                msg = RecvMsg(waitEvents[loop].data.fd, &isPeerClosed);
-                if (msg)
+                ret = RecvMsg(waitEvents[loop].data.fd, &msg);
+                if (!ret)
                 {
-                    ret = _Server_HandleMsg(waitEvents[loop].data.fd, *msg);
+                    ret = _Server_HandleMsg(waitEvents[loop].data.fd, msg);
                     if (ret)
                     {
                         LogErr("Handle msg filed %d", ret);
@@ -181,18 +180,16 @@ _Server_WorkerFunc(
                 }
                 else
                 {
-                    if (isPeerClosed)
+                    if (MY_ERR_PEER_CLOSED == ret)
                     {
-                        LogInfo("Peer Socket exit: %d", waitEvents[loop].data.fd);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
-                        close(waitEvents[loop].data.fd);
+                        LogErr("Peer closed , fd = %d", waitEvents[loop].data.fd);
                     }
                     else
                     {
-                        LogErr("Recv from %d failed %d", waitEvents[loop].data.fd, ret);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
-                        close(waitEvents[loop].data.fd);
+                        LogErr("Recv from %d failed %d:%s", waitEvents[loop].data.fd, ret, My_StrErr(ret));
                     }
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                    close(waitEvents[loop].data.fd);
                 }
             }
             else if (waitEvents[loop].events & EPOLLERR || waitEvents[loop].events & EPOLLHUP)
@@ -200,7 +197,6 @@ _Server_WorkerFunc(
                 LogInfo("%d error happen!", waitEvents[loop].data.fd);
                 epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                 close(waitEvents[loop].data.fd);
-                continue;
             }
         }
     }
@@ -366,7 +362,7 @@ void ServerTPoolCb(
     )
 {
     UNUSED(Arg);
-    LogErr("Tpool");
+    LogErr("Tpool task");
 }
 
 int
@@ -385,17 +381,6 @@ main(
         }
         goto CommonReturn;
     }
-
-    sleep(10);
-    LogInfo("Adding health monitor...");
-    ret = AddHealthMonitor(ServerHealthMonitor, 5);
-    if (ret)
-    {
-        LogInfo("Add failed %d", ret);
-    }
-    
-    AddTaskIntoThread(ServerTPoolCb, NULL);
-    AddTaskIntoThreadAndWait(ServerTPoolCb, NULL);
     
     LogInfo("Joining thread: Server Worker Func");
     pthread_join(*ServerMsgHandler, NULL);
