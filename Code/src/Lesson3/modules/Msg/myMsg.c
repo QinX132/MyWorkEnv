@@ -245,7 +245,7 @@ NewMsg(
         goto CommonReturn;
     }
     
-    retMsg = (MY_TEST_MSG*)malloc(sizeof(MY_TEST_MSG));
+    retMsg = (MY_TEST_MSG*)MyCalloc(sizeof(MY_TEST_MSG));
     memset(retMsg, 0, sizeof(MY_TEST_MSG));
 
 CommonReturn:
@@ -259,7 +259,7 @@ FreeMsg(
 {
     if (Msg)
     {
-        free(Msg);
+        MyFree(Msg);
         Msg = NULL;
     }
 }

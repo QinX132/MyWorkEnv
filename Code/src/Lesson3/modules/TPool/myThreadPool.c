@@ -82,7 +82,7 @@ ThreadPoolModuleInit(
     int loop = 0;
     int ret = 0;
     
-    sg_ThreadPool = (MY_TEST_THREAD_POOL*)malloc(sizeof(MY_TEST_THREAD_POOL));
+    sg_ThreadPool = (MY_TEST_THREAD_POOL*)MyCalloc(sizeof(MY_TEST_THREAD_POOL));
     if (!sg_ThreadPool)
     {
         ret = MY_ENOMEM;
@@ -97,7 +97,7 @@ ThreadPoolModuleInit(
     sg_ThreadPool->Exit = FALSE;
     sg_ThreadPool->ThreadNum = 0;
 
-    sg_ThreadPool->Threads = (pthread_t*)malloc(sizeof(pthread_t) * ThreadPoolSize);
+    sg_ThreadPool->Threads = (pthread_t*)MyCalloc(sizeof(pthread_t) * ThreadPoolSize);
 
     for (loop = 0; loop < ThreadPoolSize; loop ++) {
         pthread_create(&(sg_ThreadPool->Threads[loop]), NULL, _ThreadPoolFunction, (void*)sg_ThreadPool);
@@ -142,8 +142,8 @@ ThreadPoolModuleExit(
 
         pthread_mutex_destroy(&(sg_ThreadPool->Lock));
         pthread_cond_destroy(&(sg_ThreadPool->Cond));
-        free(sg_ThreadPool->Threads);
-        free(sg_ThreadPool);
+        MyFree(sg_ThreadPool->Threads);
+        MyFree(sg_ThreadPool);
         sg_ThreadPool = NULL;
         sg_TPoolModuleInited = FALSE;
     }

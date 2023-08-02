@@ -9,22 +9,14 @@ typedef struct _HEALTH_MODULE_EVENT_NODE
 }
 HEALTH_MODULE_EVENT_NODE;
 
-const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX] = 
+const MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX] = 
 {
-    [MY_MODULES_ENUM_LOG]       =   LogModuleCollectStat,
-    [MY_MODULES_ENUM_MSG]       =   MsgModuleCollectStat,
-    [MY_MODULES_ENUM_TPOOL]     =   TPoolModuleCollectStat,
-    [MY_MODULES_ENUM_CMDLINE]   =   NULL,
-    [MY_MODULES_ENUM_MHEALTH]   =   NULL
-};
-
-static int sg_ModuleReprtCBInterval[MY_MODULES_ENUM_MAX] = // seconds
-{
-    [MY_MODULES_ENUM_LOG]       =   30,
-    [MY_MODULES_ENUM_MSG]       =   30,
-    [MY_MODULES_ENUM_TPOOL]     =   30,
-    [MY_MODULES_ENUM_CMDLINE]   =   0xff,
-    [MY_MODULES_ENUM_MHEALTH]   =   0xff
+    [MY_MODULES_ENUM_LOG]       =   {LogModuleCollectStat, 30},
+    [MY_MODULES_ENUM_MSG]       =   {MsgModuleCollectStat, 30},
+    [MY_MODULES_ENUM_TPOOL]     =   {TPoolModuleCollectStat, 30},
+    [MY_MODULES_ENUM_CMDLINE]   =   {NULL, 0xff},
+    [MY_MODULES_ENUM_MHEALTH]   =   {NULL, 0xff},
+    [MY_MODULES_ENUM_MEM]       =   {MemModuleCollectStat, 30}
 };
 
 static pthread_t *sg_HealthModuleT = NULL;
@@ -78,11 +70,15 @@ _HealthWorkerListenerCb(
     
     MY_LIST_ALL(&sg_HealthListHead, loop, tmpNode, HEALTH_MODULE_EVENT_NODE, ListNode)
     {
-        eventTmp = (struct event*)malloc(sizeof(struct event));
+        eventTmp = (struct event*)MyCalloc(sizeof(struct event));
+        if (!eventTmp)
+        {
+            goto CommonReturn;
+        }
         event_assign(eventTmp, sg_HealthEventBase, -1, EV_PERSIST, _HealthModuleStatCommonTemplate, loop->Cb);
         event_add(eventTmp, &loop->Tv);
         MY_LIST_DEL_NODE(&loop->ListNode, &sg_HealthListHead);
-        free(loop);
+        MyFree(loop);
         loop = NULL;
     }
 
@@ -113,11 +109,11 @@ _HealthModule_Entry(
     memset(eventArr, 0, sizeof(eventArr));
     for(loop = 0; loop < MY_MODULES_ENUM_MAX; loop ++)
     {
-        if (sg_ModuleReprtCB[loop])
+        if (sg_ModuleReprt[loop].Cb)
         {
-            tv.tv_sec = sg_ModuleReprtCBInterval[loop];
+            tv.tv_sec = sg_ModuleReprt[loop].Interval;
             tv.tv_usec = 0;
-            event_assign(&eventArr[loop], sg_HealthEventBase, -1, EV_PERSIST, _HealthModuleStatCommonTemplate, (void*)sg_ModuleReprtCB[loop]);
+            event_assign(&eventArr[loop], sg_HealthEventBase, -1, EV_PERSIST, _HealthModuleStatCommonTemplate, (void*)sg_ModuleReprt[loop].Cb);
             event_add(&eventArr[loop], &tv);
         }
     }
@@ -159,7 +155,7 @@ AddHealthMonitor(
     locked = TRUE;
     {
         HEALTH_MODULE_EVENT_NODE *eventNode = NULL;
-        eventNode = (HEALTH_MODULE_EVENT_NODE *)malloc(sizeof( HEALTH_MODULE_EVENT_NODE));
+        eventNode = (HEALTH_MODULE_EVENT_NODE *)MyCalloc(sizeof( HEALTH_MODULE_EVENT_NODE));
         if (!eventNode)
         {
             ret = MY_ENOMEM;
@@ -195,7 +191,7 @@ HealthModuleExit(
         event_base_loopexit(sg_HealthEventBase, NULL);
         pthread_join(*sg_HealthModuleT, NULL);
         event_base_free(sg_HealthEventBase);
-        free(sg_HealthModuleT);
+        MyFree(sg_HealthModuleT);
         sg_HealthModuleT = NULL;
         sg_HealthEventBase = NULL;
         pthread_spin_destroy(&sg_HealthSpinlock);
@@ -204,7 +200,7 @@ HealthModuleExit(
             MY_LIST_ALL(&sg_HealthListHead, loop, tmpNode, HEALTH_MODULE_EVENT_NODE, ListNode)
             {
                 MY_LIST_DEL_NODE(&loop->ListNode, &sg_HealthListHead);
-                free(loop);
+                MyFree(loop);
                 loop = NULL;
             }
         }
@@ -218,7 +214,7 @@ HealthModuleInit(
 {
     int ret = 0;
 
-    sg_HealthModuleT = (pthread_t*)malloc(sizeof(pthread_t));
+    sg_HealthModuleT = (pthread_t*)MyCalloc(sizeof(pthread_t));
     if (!sg_HealthModuleT)
     {
         ret = MY_EINVAL;

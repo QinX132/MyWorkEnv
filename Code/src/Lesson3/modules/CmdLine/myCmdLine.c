@@ -127,9 +127,9 @@ _CmdServerHandleMsg(
         statBuff[offset ++] = '\n';
         for(loop = 0; loop < MY_MODULES_ENUM_MAX; loop ++)
         {
-            if (sg_ModuleReprtCB[loop])
+            if (sg_ModuleReprt[loop].Cb)
             {
-                ret = sg_ModuleReprtCB[loop](statBuff, sizeof(statBuff), &offset);
+                ret = sg_ModuleReprt[loop].Cb(statBuff, sizeof(statBuff), &offset);
                 if (ret)
                 {
                     LogErr("Get module report failed! ret %d!", ret);
@@ -414,7 +414,7 @@ CmdLineModuleInit(
             }
             MyUtil_CloseStdFds();
             /* start worker pthread */
-            sg_CmdLineWorker = (pthread_t*)malloc(sizeof(pthread_t));
+            sg_CmdLineWorker = (pthread_t*)MyCalloc(sizeof(pthread_t));
             if (!sg_CmdLineWorker)
             {
                 ret = MY_ENOMEM;
@@ -451,5 +451,5 @@ CmdLineModuleExit(
     void
     )
 {
-    free(sg_CmdLineWorker);
+    MyFree(sg_CmdLineWorker);
 }

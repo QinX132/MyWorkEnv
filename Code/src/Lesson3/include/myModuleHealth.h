@@ -6,10 +6,18 @@
 #include "myMsg.h"
 #include "myThreadPool.h"
 #include "myModuleCommon.h"
+#include "myMem.h"
 
 typedef int (*StatReportCB)(char*, int, int*);
 
-extern const StatReportCB sg_ModuleReprtCB[MY_MODULES_ENUM_MAX];
+typedef struct
+{
+    StatReportCB Cb;
+    int Interval;
+}
+MODULE_HEALTH_REPORT_REGISTER;
+
+extern const MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX];
 
 void
 HealthModuleExit(

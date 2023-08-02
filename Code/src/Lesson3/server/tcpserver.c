@@ -307,7 +307,7 @@ _Server_Init(
     
     if (!ServerMsgHandler)
     {
-        ServerMsgHandler = (pthread_t*)malloc(sizeof(pthread_t));
+        ServerMsgHandler = (pthread_t*)MyCalloc(sizeof(pthread_t));
         if (!ServerMsgHandler)
         {
             ret = MY_ENOMEM;

@@ -225,7 +225,7 @@ _Client_Init(
     
     if (!ClientMsgHandler)
     {
-        ClientMsgHandler = (pthread_t*)malloc(sizeof(pthread_t));
+        ClientMsgHandler = (pthread_t*)MyCalloc(sizeof(pthread_t));
         if (!ClientMsgHandler)
         {
             ret = ENOMEM;
@@ -253,7 +253,7 @@ Client_Exit(
     LogInfo("----------------- MsgHandler exiting!-------------------");
     if (ClientMsgHandler)
     {
-        free(ClientMsgHandler);
+        MyFree(ClientMsgHandler);
         ClientMsgHandler = NULL;
     }
     LogInfo("----------------- MsgHandler exited! -------------------");

@@ -3,7 +3,7 @@ CC = gcc
 WORK_ROOT = .
 MODULE_ROOT = ../modules
 include Makefile.feat
-include Makefile.module
+include $(MODULE_ROOT)/Makefile.module
 
 SRC_FILE += $(WORK_ROOT)/tcpserver.c \
 			$(WORK_ROOT)/../common/myCommonUtil.c \

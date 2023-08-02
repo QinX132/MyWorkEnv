@@ -32,7 +32,15 @@ MyModuleCommonInit(
 
     UNUSED(ModuleInitParam);
     
-    
+#ifdef FEATURE_MEM
+    ret = MemModuleInit();
+    if (ret)
+    {
+        LogErr("Mem module init failed! %d %s", ret, My_StrErr(ret));
+        goto CommonReturn;
+    }
+#endif
+
 #ifdef FEATURE_CMDLINE
     if (!ModuleInitParam.RoleName || !strlen(ModuleInitParam.RoleName) || !ModuleInitParam.Argv)
     {
@@ -129,5 +137,8 @@ MyModuleCommonExit(
 #ifdef FEATURE_LOG
     LogInfo("----------------------------------------------------------");
     LogModuleExit();
+#endif
+#ifdef FEATURE_MEM
+    MemModuleExit();
 #endif
 }
