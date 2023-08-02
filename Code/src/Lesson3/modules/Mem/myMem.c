@@ -52,6 +52,8 @@ MemRegister(
         memset(&sg_MemNodes[loop], 0, sizeof(MY_MEM_NODE));
         strcpy(sg_MemNodes[loop].MemModuleName, Name);
         pthread_spin_init(&sg_MemNodes[loop].MemSpinlock, PTHREAD_PROCESS_PRIVATE);
+        sg_MemNodes[loop].Registered = TRUE;
+        sg_MemNodes[loop].MemModuleId = loop;
         *MemId = loop;
         registered = TRUE;
         break;
@@ -171,6 +173,7 @@ MemCalloc(
         sg_MemNodes[MemId].MemBytesAlloced += Size;
         pthread_spin_unlock(&sg_MemNodes[MemId].MemSpinlock);
     }
+    ret = (void*)(((uint8_t*)ret) + sizeof(MY_MEM_PREFIX));
     return ret;
 }
 
@@ -183,9 +186,10 @@ MemFree(
     uint32_t Size = 0;
     if (sg_MemNodes[MemId].Registered)
     {
+        Ptr = (void*)(((uint8_t*)Ptr) - sizeof(MY_MEM_PREFIX));
         Size = ((MY_MEM_PREFIX*)Ptr)->Size;
         ((MY_MEM_PREFIX*)Ptr)->Freed = TRUE;
-        MyFree(Ptr);
+        free(Ptr);
         pthread_spin_lock(&sg_MemNodes[MemId].MemSpinlock);
         sg_MemNodes[MemId].MemBytesFreed += Size;
         pthread_spin_unlock(&sg_MemNodes[MemId].MemSpinlock);

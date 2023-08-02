@@ -12,7 +12,8 @@ static const char* sg_ModulesName[MY_MODULES_ENUM_MAX] =
     [MY_MODULES_ENUM_MSG]       =   "Msg",
     [MY_MODULES_ENUM_TPOOL]     =   "TPool",
     [MY_MODULES_ENUM_CMDLINE]   =   "CmdLine",
-    [MY_MODULES_ENUM_MHEALTH]   =   "MHealth"
+    [MY_MODULES_ENUM_MHEALTH]   =   "MHealth",
+    [MY_MODULES_ENUM_MEM]       =   "Mem"
 };
 
 const char*

@@ -24,16 +24,28 @@ _Client_CreateFd(
 {
     int clientFd = -1;
     unsigned int serverIp = 0;
+    int ret = 0;
     struct sockaddr_in serverAddr = {0};
     int32_t reuseable = 1; // set port reuseable when fd closed
+    struct timeval timeout;
 
     clientFd = socket(AF_INET, SOCK_STREAM, 0);
     if(0 > clientFd)
     {
+        ret = errno;
         LogErr("Create socket failed");
         goto CommonReturn;
     }
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
+    {
+        ret = errno;
+        LogErr("setsockopt failed %d %s", errno, My_StrErr(errno));
+        goto CommonReturn;
+    }
 
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(MY_TEST_TCP_SERVER_PORT);
@@ -41,12 +53,19 @@ _Client_CreateFd(
     serverAddr.sin_addr.s_addr=serverIp;
     if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
     {
+        ret = errno;
         LogErr("Connect failed");
         goto CommonReturn;
     }
     LogInfo("Connect success");
 
 CommonReturn:
+    if (ret)
+    {
+        if (clientFd != -1)
+            close(clientFd);
+        clientFd = -1;
+    }
     return clientFd;
 }
 
