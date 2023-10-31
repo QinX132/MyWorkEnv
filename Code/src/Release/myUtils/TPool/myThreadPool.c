@@ -3,33 +3,33 @@
 #include "myLogIO.h"
 #include "myList.h"
 #include "assert.h"
+#include "myCommonUtil.h"
 
 #define MY_TEST_TASK_TIME_OUT_DEFAULT_VAL                       5 //seconds
-
 #define THREAD_POOL_SIZE                                        5
 
-typedef enum _MY_THREAD_TASK_STATUS
+typedef enum _MY_TPOOL_TASK_STATUS
 {
-    MY_THREAD_TASK_STATUS_UNSPEC,
-    MY_THREAD_TASK_STATUS_INIT,
-    MY_THREAD_TASK_STATUS_WORKING,
-    MY_THREAD_TASK_STATUS_TIMEOUT
+    MY_TPOOL_TASK_STATUS_UNSPEC,
+    MY_TPOOL_TASK_STATUS_INIT,
+    MY_TPOOL_TASK_STATUS_WORKING,
+    MY_TPOOL_TASK_STATUS_TIMEOUT
 }
-MY_THREAD_TASK_STATUS;
+MY_TPOOL_TASK_STATUS;
 
-typedef struct _MY_TEST_THREAD_TASK
+typedef struct _MY_TPOOL_TASK
 {
     void (*TaskFunc)(void*);
     void* TaskArg;
     BOOL HasTimeOut;
     pthread_mutex_t *TaskLock;
     pthread_cond_t *TaskCond;
-    MY_THREAD_TASK_STATUS TaskStat;
+    MY_TPOOL_TASK_STATUS TaskStat;
     MY_LIST_NODE List;
 }
-MY_TEST_THREAD_TASK;
+MY_TPOOL_TASK;
 
-typedef struct _MY_TEST_THREAD_POOL{
+typedef struct _MY_THREAD_POOL{
     pthread_mutex_t Lock;
     pthread_cond_t Cond;
     pthread_t *Threads;
@@ -38,12 +38,12 @@ typedef struct _MY_TEST_THREAD_POOL{
     int TaskListLength;
     volatile BOOL Exit;
 }
-MY_TEST_THREAD_POOL;
+MY_THREAD_POOL;
 
 //__thread 
-MY_TEST_THREAD_POOL* sg_ThreadPool = NULL;
+MY_THREAD_POOL* sg_ThreadPool = NULL;
 //__thread 
-int sg_ThreadPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
+int sg_TPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
 //__thread 
 BOOL sg_TPoolModuleInited = FALSE;
 
@@ -52,18 +52,19 @@ static int sg_TPoolTaskSucceed = 0;
 static int sg_TPoolTaskFailed = 0;
 
 static void* 
-_ThreadPoolFunction(
+_TPoolFunction(
     void* arg
     )
 {
-    MY_TEST_THREAD_POOL* threadPool = (MY_TEST_THREAD_POOL*)arg;
-    MY_TEST_THREAD_TASK* task = NULL;
+    MY_THREAD_POOL* threadPool = (MY_THREAD_POOL*)arg;
+    MY_TPOOL_TASK* loop = NULL, *tmp = NULL;
+    MY_LIST_NODE listHeadTmp;
     LogInfo("Thread worker %lu entering...", pthread_self());
-
+    
     while (!threadPool->Exit) 
     {
-        MY_TEST_UATOMIC_INC(&threadPool->CurrentThreadNum);
         pthread_mutex_lock(&threadPool->Lock);
+        MY_TEST_UATOMIC_INC(&threadPool->CurrentThreadNum);
         while(pthread_cond_wait(&threadPool->Cond, &threadPool->Lock) == 0)
         {
             if (threadPool->Exit)
@@ -73,51 +74,52 @@ _ThreadPoolFunction(
             }
             else
             {
-                task = MY_LIST_FIRST_ENTRY(&threadPool->TaskListHead, MY_TEST_THREAD_TASK, List);
-                if (task)
-                {
-                    MY_LIST_DEL_NODE(&task->List);
-                    threadPool->TaskListLength --;
-                }
+                MY_LIST_HEAD_COPY(&listHeadTmp, &threadPool->TaskListHead);
+                MY_LIST_NODE_INIT(&threadPool->TaskListHead);
+                threadPool->TaskListLength = 0;
                 break;
             }
         };
-        pthread_mutex_unlock(&threadPool->Lock);
         MY_TEST_UATOMIC_DEC(&threadPool->CurrentThreadNum);
-        
-        if (task && task->TaskFunc)
+        pthread_mutex_unlock(&threadPool->Lock);
+
+        MY_LIST_FOR_EACH(&listHeadTmp, loop, tmp, MY_TPOOL_TASK, List)
         {
-            if (task->HasTimeOut && task->TaskStat == MY_THREAD_TASK_STATUS_TIMEOUT)
+            if (loop && loop->TaskFunc)
             {
-                pthread_mutex_destroy(task->TaskLock);
-                pthread_cond_destroy(task->TaskCond);
-                MyFree(task->TaskLock);
-                MyFree(task->TaskCond);
-            }
-            else
-            {
-                task->TaskFunc(task->TaskArg);
-                if (task->HasTimeOut)
+                if (loop->HasTimeOut && loop->TaskStat == MY_TPOOL_TASK_STATUS_TIMEOUT)
                 {
-                    pthread_mutex_lock(task->TaskLock);
-                    pthread_cond_signal(task->TaskCond);
-                    pthread_mutex_unlock(task->TaskLock);
+                    pthread_mutex_destroy(loop->TaskLock);
+                    pthread_cond_destroy(loop->TaskCond);
+                    MyFree(loop->TaskLock);
+                    MyFree(loop->TaskCond);
                 }
-                MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+                else
+                {
+                    loop->TaskFunc(loop->TaskArg);
+                    if (loop->HasTimeOut)
+                    {
+                        pthread_mutex_lock(loop->TaskLock);
+                        pthread_cond_signal(loop->TaskCond);
+                        pthread_mutex_unlock(loop->TaskLock);
+                    }
+                    MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+                }
+                MY_LIST_DEL_NODE(&loop->List);
+                MyFree(loop);
+                loop = NULL;
             }
-            MyFree(task);
-            task = NULL;
         }
     }
 
 CommonReturn:
     MY_TEST_UATOMIC_DEC(&threadPool->CurrentThreadNum);
-    LogInfo("Thread worker %lu exit!", pthread_self());
+    LogInfo("Thread worker %lu exit.", pthread_self());
     pthread_exit(NULL);
 }
 
 int
-ThreadPoolModuleInit(
+TPoolModuleInit(
     MY_TPOOL_MODULE_INIT_ARG *InitArg
     )
 {
@@ -130,7 +132,7 @@ ThreadPoolModuleInit(
         ret = MY_EINVAL;
         goto CommonReturn;
     }
-    sg_ThreadPool = (MY_TEST_THREAD_POOL*)MyCalloc(sizeof(MY_TEST_THREAD_POOL));
+    sg_ThreadPool = (MY_THREAD_POOL*)MyCalloc(sizeof(MY_THREAD_POOL));
     if (!sg_ThreadPool)
     {
         ret = MY_ENOMEM;
@@ -151,13 +153,13 @@ ThreadPoolModuleInit(
 
     sg_ThreadPool->Threads = (pthread_t*)MyCalloc(sizeof(pthread_t) * InitArg->ThreadPoolSize);
     for (loop = 0; loop < InitArg->ThreadPoolSize; loop ++) {
-        ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _ThreadPoolFunction, (void*)sg_ThreadPool);
+        ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _TPoolFunction, (void*)sg_ThreadPool);
         assert(!ret);
     }
     ret = pthread_attr_destroy(&attr);
     assert(!ret);
 
-    sg_ThreadPoolTaskTimeout = InitArg->Timeout ? InitArg->Timeout : MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
+    sg_TPoolTaskTimeout = InitArg->Timeout ? InitArg->Timeout : MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
     sg_TPoolModuleInited = TRUE;
 
     // to make sure workers are ready
@@ -170,7 +172,7 @@ ThreadPoolModuleInit(
             break;
         }
         pthread_mutex_unlock(&sg_ThreadPool->Lock);
-        usleep(10);
+        usleep(10 * 1000);
     };
     
 CommonReturn:
@@ -178,7 +180,7 @@ CommonReturn:
 }
 
 void
-ThreadPoolModuleExit(
+TPoolModuleExit(
     void
     )
 {
@@ -192,7 +194,7 @@ ThreadPoolModuleExit(
         pthread_mutex_unlock(&(sg_ThreadPool->Lock));
 
         for (loop = 0; loop < sg_ThreadPool->CurrentThreadNum; loop++) {
-            pthread_join(sg_ThreadPool->Threads[loop], NULL);
+            pthread_cond_broadcast(&(sg_ThreadPool->Cond));
         }
 
         pthread_mutex_destroy(&(sg_ThreadPool->Lock));
@@ -206,20 +208,20 @@ ThreadPoolModuleExit(
 
 // async api, TaskArg is a in arg
 int
-AddTaskIntoThread(
+TPoolAddTask(
     void (*TaskFunc)(void*),
     __in void* TaskArg
     )
 {
     int ret = 0;
-    MY_TEST_THREAD_TASK *node = NULL;
+    MY_TPOOL_TASK *node = NULL;
     
     if (!sg_TPoolModuleInited)
     {
         ret = MY_EINVAL;
         goto CommonReturn;
     }
-    node = (MY_TEST_THREAD_TASK*)MyCalloc(sizeof(MY_TEST_THREAD_TASK));
+    node = (MY_TPOOL_TASK*)MyCalloc(sizeof(MY_TPOOL_TASK));
     if (!node) 
     {
         ret = MY_ENOMEM;
@@ -246,10 +248,12 @@ CommonReturn:
 }
 
 // sync api, you can care about TaskArg inout
+// when TimeoutSec > 0, use it; otherwise use sg_TPoolTaskTimeout
 int
-AddTaskIntoThreadAndWait(
+TPoolAddTaskAndWait(
     void (*TaskFunc)(void*),
-    __inout void* TaskArg
+    __inout void* TaskArg,
+    int32_t TimeoutSec
     )
 {
     int ret = 0;
@@ -259,16 +263,16 @@ AddTaskIntoThreadAndWait(
     pthread_cond_t *taskCond;
     pthread_condattr_t taskAttr;
     BOOL taskInited = FALSE;
-    MY_TEST_THREAD_TASK *node = NULL;
+    MY_TPOOL_TASK *node = NULL;
     
-    if (!sg_TPoolModuleInited || sg_ThreadPoolTaskTimeout <= 0)
+    if (!sg_TPoolModuleInited || (sg_TPoolTaskTimeout <= 0 && TimeoutSec <= 0))
     {
         ret = MY_EINVAL;
         goto CommonReturn;
     }
     taskLock = (pthread_mutex_t*)MyCalloc(sizeof(pthread_mutex_t));
     taskCond = (pthread_cond_t*)MyCalloc(sizeof(pthread_cond_t));
-    node = (MY_TEST_THREAD_TASK*)MyCalloc(sizeof(MY_TEST_THREAD_TASK));
+    node = (MY_TPOOL_TASK*)MyCalloc(sizeof(MY_TPOOL_TASK));
     if (!taskLock || !taskCond || !node)
     {
         ret = MY_ENOMEM;
@@ -288,7 +292,7 @@ AddTaskIntoThreadAndWait(
     node->TaskFunc = TaskFunc;
     node->TaskCond = taskCond;
     node->TaskLock = taskLock;
-    node->TaskStat = MY_THREAD_TASK_STATUS_INIT;
+    node->TaskStat = MY_TPOOL_TASK_STATUS_INIT;
     
     pthread_mutex_lock(&sg_ThreadPool->Lock);
     {
@@ -311,14 +315,22 @@ AddTaskIntoThreadAndWait(
 
     if (taskAdded)
     {
-        ts.tv_sec += sg_ThreadPoolTaskTimeout;
-        LogInfo("Add with timeout %d, sec %d", sg_ThreadPoolTaskTimeout, ts.tv_sec);
+        if (TimeoutSec > 0)
+        {
+            ts.tv_sec += TimeoutSec;
+            LogInfo("Add with timeout %d", TimeoutSec);
+        }
+        else
+        {
+            ts.tv_sec += sg_TPoolTaskTimeout;
+            LogInfo("Add with timeout %d", sg_TPoolTaskTimeout);
+        }
         ret = pthread_cond_timedwait(taskCond, taskLock, &ts);
     }
     if (ETIMEDOUT == ret)
     {
         LogErr("Task wait timeout!");
-        node->TaskStat = MY_THREAD_TASK_STATUS_TIMEOUT;
+        node->TaskStat = MY_TPOOL_TASK_STATUS_TIMEOUT;
     }
     pthread_mutex_unlock(taskLock);
     
@@ -371,9 +383,9 @@ CommonReturn:
 }
 
 void
-SetTPoolTimeout(
+TPoolSetTimeout(
     uint32_t Timeout
     )
 {
-    sg_ThreadPoolTaskTimeout = Timeout;
+    sg_TPoolTaskTimeout = Timeout;
 }

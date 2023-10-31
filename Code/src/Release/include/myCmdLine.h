@@ -9,12 +9,6 @@ extern "C"{
 
 typedef void (*ExitHandle)(void);
 
-// RoleName Can Be NULL
-void
-CmdLineUsage(
-    char* RoleName
-    );
-
 typedef struct _MY_CMDLINE_MODULE_INIT_ARG
 {
     char* RoleName;
@@ -24,14 +18,14 @@ typedef struct _MY_CMDLINE_MODULE_INIT_ARG
 }
 MY_CMDLINE_MODULE_INIT_ARG;
 
-typedef enum _MY_TEST_CMDLINE_ROLE
+typedef enum _MY_CMDLINE_ROLE
 {
-    MY_TEST_CMDLINE_ROLE_SVR,
-    MY_TEST_CMDLINE_ROLE_CLT,
+    MY_CMDLINE_ROLE_SVR,
+    MY_CMDLINE_ROLE_CLT,
     
-    MY_TEST_CMDLINE_ROLE_UNUSED
+    MY_CMDLINE_ROLE_UNUSED
 }
-MY_TEST_CMDLINE_ROLE;
+MY_CMDLINE_ROLE;
 
 typedef enum _MY_TEST_CMD_TYPE
 {
@@ -45,13 +39,6 @@ typedef enum _MY_TEST_CMD_TYPE
     MY_TEST_CMD_TYPE_UNUSED
 }
 MY_TEST_CMD_TYPE;
-
-typedef struct _MY_TEST_CMDLINE_CONT
-{
-    char* Opt;
-    char* Help;
-}
-MY_TEST_CMDLINE_CONT;
 
 int
 CmdLineModuleInit(

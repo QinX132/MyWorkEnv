@@ -11,7 +11,7 @@ CFLAGS 	+= 	-I$(WORK_ROOT)/../include/ \
             -I$(WORK_ROOT)/../common/ \
 			-I$(WORK_ROOT)/../../third_party/libevent/include/ 
 
-CFLAGS 	+= 	-Wall -Wextra -g -DBUILD_RULE_CLIENT
+CFLAGS 	+= 	-Wall -Wextra -g
 
 LDFLAGS +=	-L$(UTILS_ROOT) -lmyUtils
 LDFLAGS +=  -L$(WORK_ROOT)/../../third_party/libevent/lib/ -levent

@@ -3,10 +3,10 @@
 #include "include.h"
 #include "myModuleCommon.h"
 
-#define MY_TEST_SESSION_ID_MAX_LEN          64
-#define MY_TEST_DISCONNECT_STRING           "disconnect"
-#define MY_TEST_MSX_CONTENT_LEN             128
-#define MY_TEST_MSG_CONTENT_MAX_LEN         1024*1024
+#define MY_TEST_SESSION_ID_MAX_LEN                                  64
+#define MY_TEST_DISCONNECT_STRING                                   "disconnect"
+#define MY_TEST_MSX_CONTENT_LEN                                     128
+#define MY_TEST_MSG_CONTENT_MAX_LEN                                 (1024*1024)
 
 typedef enum _MY_TEST_MSG_TYPE{
     MY_TEST_MSG_TYPE_UNUSED,

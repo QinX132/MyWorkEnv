@@ -27,8 +27,8 @@ _TPool_AddTaskCb(
         sg_TPoolTaskErrHapped = TRUE;
         UTLog("Invalid arg, value:%d arg:%p taskarg:%p\n", taskArg->Value, taskArg, taskArg->Ptr);
     }
-
     MyFree(taskArg);
+    UTLog("_TPool_AddTaskCb success\n");
 }
 
 int
@@ -39,7 +39,7 @@ _UnitTest_TPoolForwardT(
     int ret = 0;
     UT_TPOOL_TASK_ARG *taskArg = NULL;
     double cpuUsage = 0;
-    MY_TPOOL_MODULE_INIT_ARG initArg = {.ThreadPoolSize = 5, .Timeout = 5};
+    MY_TPOOL_MODULE_INIT_ARG initArg = {.ThreadPoolSize = 1, .Timeout = 5};
 
     ret = MemModuleInit();
     if (ret)
@@ -71,6 +71,7 @@ MY_UTIL_GET_CPU_USAGE_START
         UTLog("Add fail\n");
         goto CommonReturn;
     }
+    sleep(1);
 
     taskArg = (UT_TPOOL_TASK_ARG*)MyCalloc(sizeof(UT_TPOOL_TASK_ARG));
     if (!taskArg)
@@ -81,6 +82,21 @@ MY_UTIL_GET_CPU_USAGE_START
     taskArg->Value = UT_TPOOL_TEST_VAL;
     taskArg->Ptr = (void*)taskArg;
     ret = AddTaskIntoThreadAndWait(_TPool_AddTaskCb, (void*)taskArg);
+    if (ret)
+    {
+        UTLog("Add fail\n");
+        goto CommonReturn;
+    }
+    
+    taskArg = (UT_TPOOL_TASK_ARG*)MyCalloc(sizeof(UT_TPOOL_TASK_ARG));
+    if (!taskArg)
+    {
+        ret = -MY_ENOMEM;
+        goto CommonReturn;
+    }
+    taskArg->Value = UT_TPOOL_TEST_VAL;
+    taskArg->Ptr = (void*)taskArg;
+    ret = AddTaskIntoThread(_TPool_AddTaskCb, (void*)taskArg);
     if (ret)
     {
         UTLog("Add fail\n");
