@@ -164,7 +164,7 @@ CommonReturn:
 }
 
 void
-SetLogLevel(
+LogSetLevel(
     uint32_t LogLevel
     )
 {

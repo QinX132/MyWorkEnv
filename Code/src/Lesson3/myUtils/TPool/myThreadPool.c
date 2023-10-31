@@ -57,7 +57,8 @@ _ThreadPoolFunction(
     )
 {
     MY_TEST_THREAD_POOL* threadPool = (MY_TEST_THREAD_POOL*)arg;
-    MY_TEST_THREAD_TASK* task = NULL;
+    MY_TEST_THREAD_TASK* loop = NULL, *tmp = NULL;
+    MY_LIST_NODE listHeadTmp;
     LogInfo("Thread worker %lu entering...", pthread_self());
 
     while (!threadPool->Exit) 
@@ -73,40 +74,42 @@ _ThreadPoolFunction(
             }
             else
             {
-                task = MY_LIST_FIRST_ENTRY(&threadPool->TaskListHead, MY_TEST_THREAD_TASK, List);
-                if (task)
-                {
-                    MY_LIST_DEL_NODE(&task->List);
-                    threadPool->TaskListLength --;
-                }
+                memcpy(&listHeadTmp, &threadPool->TaskListHead, sizeof(MY_LIST_NODE));
+                MY_LIST_NODE_INIT(&threadPool->TaskListHead);
+                threadPool->TaskListLength = 0;
+                LogInfo("Get all list node");
                 break;
             }
         };
         pthread_mutex_unlock(&threadPool->Lock);
         MY_TEST_UATOMIC_DEC(&threadPool->CurrentThreadNum);
-        
-        if (task && task->TaskFunc)
+
+        MY_LIST_FOR_EACH(&listHeadTmp, loop, tmp, MY_TEST_THREAD_TASK, List)
         {
-            if (task->HasTimeOut && task->TaskStat == MY_THREAD_TASK_STATUS_TIMEOUT)
+            if (loop && loop->TaskFunc)
             {
-                pthread_mutex_destroy(task->TaskLock);
-                pthread_cond_destroy(task->TaskCond);
-                MyFree(task->TaskLock);
-                MyFree(task->TaskCond);
-            }
-            else
-            {
-                task->TaskFunc(task->TaskArg);
-                if (task->HasTimeOut)
+                if (loop->HasTimeOut && loop->TaskStat == MY_THREAD_TASK_STATUS_TIMEOUT)
                 {
-                    pthread_mutex_lock(task->TaskLock);
-                    pthread_cond_signal(task->TaskCond);
-                    pthread_mutex_unlock(task->TaskLock);
+                    pthread_mutex_destroy(loop->TaskLock);
+                    pthread_cond_destroy(loop->TaskCond);
+                    MyFree(loop->TaskLock);
+                    MyFree(loop->TaskCond);
                 }
-                MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+                else
+                {
+                    loop->TaskFunc(loop->TaskArg);
+                    if (loop->HasTimeOut)
+                    {
+                        pthread_mutex_lock(loop->TaskLock);
+                        pthread_cond_signal(loop->TaskCond);
+                        pthread_mutex_unlock(loop->TaskLock);
+                    }
+                    MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+                }
+                MY_LIST_DEL_NODE(&loop->List);
+                MyFree(loop);
+                loop = NULL;
             }
-            MyFree(task);
-            task = NULL;
         }
     }
 

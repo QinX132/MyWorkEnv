@@ -5,37 +5,46 @@
 #include "myCommonUtil.h"
 #include "myModuleHealth.h"
 
-static MY_TEST_CMDLINE_ROLE sg_CmdLineRole = MY_TEST_CMDLINE_ROLE_UNUSED;
+typedef struct _MY_CMDLINE_CONT
+{
+    char* Opt;
+    char* Help;
+}
+MY_CMDLINE_CONT;
+
+static MY_CMDLINE_ROLE sg_CmdLineRole = MY_CMDLINE_ROLE_UNUSED;
 static pthread_t *sg_CmdLineWorker = NULL;
 static ExitHandle sg_ExitHandle = NULL;
 
-#define MY_TEST_CMDLINE_ARG_LIST                 \
-        __MY_TEST_ARG("start", "start this program")  \
-        __MY_TEST_ARG("showstat", "show this program's modules stats")  \
-        __MY_TEST_ARG("stop", "stop this program")  \
-        __MY_TEST_ARG("help", "show this page")  \
-        __MY_TEST_ARG("changeTPoolTimeout", "<Timout> (second)")  \
-        __MY_TEST_ARG("changeLogLevel", "<Level> (0-info 1-debug 2-warn 3-error)")
+#define MY_CMDLINE_ARG_LIST                 \
+        __MY_CMDLINE_ARG("start", "start this program")  \
+        __MY_CMDLINE_ARG("showstat", "show this program's modules stats")  \
+        __MY_CMDLINE_ARG("stop", "stop this program")  \
+        __MY_CMDLINE_ARG("help", "show this page")  \
+        __MY_CMDLINE_ARG("changeTPoolTimeout", "<Timout> (second)")  \
+        __MY_CMDLINE_ARG("changeLogLevel", "<Level> (0-info 1-debug 2-warn 3-error)")
 
-static const MY_TEST_CMDLINE_CONT sg_CmdLineCont[MY_TEST_CMD_TYPE_UNUSED] = 
+static const MY_CMDLINE_CONT sg_CmdLineCont[MY_TEST_CMD_TYPE_UNUSED] = 
 {
-    #undef __MY_TEST_ARG
-    #define __MY_TEST_ARG(_opt_,_help_) \
-        {_opt_, _help_},
-    MY_TEST_CMDLINE_ARG_LIST
+#undef __MY_CMDLINE_ARG
+#define __MY_CMDLINE_ARG(_opt_,_help_) \
+    {_opt_, _help_},
+    MY_CMDLINE_ARG_LIST
+#undef __MY_CMDLINE_ARG
 };
 
 void
-CmdLineUsage(
+_CmdLineUsage(
     char* RoleName
     )
 {
     printf("--------------------------------------------------------------------------\n");
     printf("%10s Usage:\n\n", RoleName ? RoleName : "CmdLine");
-    #undef __MY_TEST_ARG
-    #define __MY_TEST_ARG(_opt_,_help_) \
-        printf("%20s: [%-30s]\n", _opt_, _help_);
-    MY_TEST_CMDLINE_ARG_LIST
+#undef __MY_CMDLINE_ARG
+#define __MY_CMDLINE_ARG(_opt_,_help_) \
+    printf("%20s: [%-30s]\n", _opt_, _help_);
+    MY_CMDLINE_ARG_LIST
+#undef __MY_CMDLINE_ARG
     printf("\n--------------------------------------------------------------------------\n");
 }
 
@@ -184,7 +193,7 @@ _CmdServerHandleMsg(
             ret = MY_EIO;
             LogErr("Send CmdLine reply failed!");
         }
-        SetTPoolTimeout(timeout);
+        TPoolSetTimeout(timeout);
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_TEST_CMD_TYPE_CHANGE_LOG_LEVEL].Opt))
     {
@@ -196,7 +205,7 @@ _CmdServerHandleMsg(
             ret = MY_EIO;
             LogErr("Send CmdLine reply failed!");
         }
-        SetLogLevel(logLevel);
+        LogSetLevel(logLevel);
     }
     else
     {
@@ -347,7 +356,7 @@ _CmdClient_WorkerFunc(
     if (!Cmd || !_CmdLineIsSupported(Cmd))
     {
         ret = MY_EINVAL;
-        CmdLineUsage(NULL);
+        _CmdLineUsage(NULL);
         goto CommonReturn;
     }
     if (strcasecmp(sg_CmdLineCont[MY_TEST_CMD_TYPE_START].Opt, Cmd) == 0)
@@ -434,14 +443,14 @@ CmdLineModuleInit(
         ret = MY_EIO;
         goto CommonReturn;
     }
-    sg_CmdLineRole = isRunning ? MY_TEST_CMDLINE_ROLE_CLT : MY_TEST_CMDLINE_ROLE_SVR;
+    sg_CmdLineRole = isRunning ? MY_CMDLINE_ROLE_CLT : MY_CMDLINE_ROLE_SVR;
     
     if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_HELP].Opt) == 0)
     {
         goto CommonErr;
     }
     else if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_START].Opt) != 0 && 
-            MY_TEST_CMDLINE_ROLE_SVR == sg_CmdLineRole)
+            MY_CMDLINE_ROLE_SVR == sg_CmdLineRole)
     {
         if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_STOP].Opt) == 0)
         {
@@ -452,7 +461,7 @@ CmdLineModuleInit(
 
     switch (sg_CmdLineRole)
     {
-        case MY_TEST_CMDLINE_ROLE_SVR:
+        case MY_CMDLINE_ROLE_SVR:
             MyUtil_MakeDaemon();
             ret = MyUtil_SetPidIntoFile(pidFd);
             if (ret)
@@ -475,7 +484,7 @@ CmdLineModuleInit(
                 goto CommonReturn;
             }
             break;
-        case MY_TEST_CMDLINE_ROLE_CLT:
+        case MY_CMDLINE_ROLE_CLT:
             if (InitArg->Argc == 2)
             {
                 sprintf(cmd, "%s", InitArg->Argv[1]);
@@ -495,7 +504,7 @@ CmdLineModuleInit(
     goto CommonReturn;
 
 CommonErr:
-    CmdLineUsage(InitArg->RoleName);
+    _CmdLineUsage(InitArg->RoleName);
     ret = MY_ERR_EXIT_WITH_SUCCESS;
 CommonReturn:
     return ret;

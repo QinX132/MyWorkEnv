@@ -47,5 +47,12 @@ MY_LIST_NODE;
             (_NODE_)->Next ->Prev = (_NODE_)->Prev; \
         }while(0)
 
+#define MY_LIST_HEAD_COPY(_NEW_HEAD_, _OLD_HEAD_) \
+        do { \
+            (_NEW_HEAD_)->Next = (_OLD_HEAD_)->Next; \
+            (_NEW_HEAD_)->Next->Prev = (_NEW_HEAD_); \
+            (_NEW_HEAD_)->Prev = (_OLD_HEAD_)->Prev; \
+            (_NEW_HEAD_)->Prev->Next = (_NEW_HEAD_); \
+        }while(0)
 
 #endif /* _MY_LIST_H_ */

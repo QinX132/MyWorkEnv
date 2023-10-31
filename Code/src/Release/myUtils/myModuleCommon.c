@@ -1,5 +1,4 @@
 #include "myModuleCommon.h"
-#include "myCommonUtil.h"
 
 static const char* sg_ModulesName[MY_MODULES_ENUM_MAX] = 
 {
@@ -68,7 +67,7 @@ MyModuleCommonInit(
 
     if (ModuleInitParam.TPoolArg)
     {
-        ret = ThreadPoolModuleInit(ModuleInitParam.TPoolArg);
+        ret = TPoolModuleInit(ModuleInitParam.TPoolArg);
         if (ret)
         {
             LogErr("Init TPool failed! %d %s", ret, My_StrErr(ret));
@@ -102,7 +101,7 @@ MyModuleCommonExit(
     MsgModuleExit();
     LogInfo("-------------------- Msg Module exit ---------------------");
 
-    ThreadPoolModuleExit();
+    TPoolModuleExit();
     LogInfo("-------------------- TPool Module exit -------------------");
 
     HealthModuleExit();

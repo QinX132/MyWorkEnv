@@ -130,7 +130,7 @@ CommonReturn:
 }
 
 int
-AddHealthMonitor(
+HealthMonitorAddEntry(
     StatReportCB Cb,
     int TimeIntervals
     )

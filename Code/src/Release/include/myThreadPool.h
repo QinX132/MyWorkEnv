@@ -15,25 +15,26 @@ typedef struct _MY_TPOOL_MODULE_INIT_ARG
 MY_TPOOL_MODULE_INIT_ARG;
 
 int
-ThreadPoolModuleInit(
+TPoolModuleInit(
     MY_TPOOL_MODULE_INIT_ARG *InitArg
     );
 
 void
-ThreadPoolModuleExit(
+TPoolModuleExit(
     void
     );
 
 int
-AddTaskIntoThread(
+TPoolAddTask(
     void (*TaskFunc)(void*),
     void* TaskArg
     );
 
 int
-AddTaskIntoThreadAndWait(
+TPoolAddTaskAndWait(
     void (*TaskFunc)(void*),
-    void* TaskArg
+    void* TaskArg,
+    int32_t TimeoutSec
     );
 
 int
@@ -44,7 +45,7 @@ TPoolModuleCollectStat(
     );
 
 void 
-SetTPoolTimeout(
+TPoolSetTimeout(
     uint32_t Timeout
     );
 
