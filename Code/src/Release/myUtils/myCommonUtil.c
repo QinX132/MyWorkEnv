@@ -49,7 +49,7 @@ MyUtil_SetPidIntoFile(
     )
 {
     int32_t ret = 0;
-    char buf[MY_TEST_BUFF_32] = {0};
+    char buf[MY_BUFF_32] = {0};
     ssize_t len = 0;
 
     ftruncate(Fd, 0);

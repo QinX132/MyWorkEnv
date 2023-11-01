@@ -1,19 +1,19 @@
 #include "myLogIO.h"
 #include "myModuleHealth.h"
 
-#define MY_TEST_LOG_MEX_LEN             (50 * 1024 * 1024)
+#define MY_LOG_MEX_LEN                                  (50 * 1024 * 1024)
 
-static char sg_RoleName[MY_TEST_ROLE_NAME_MAX_LEN] = {0};
-static char *sg_LogLevelStr [MY_TEST_LOG_LEVEL_MAX] = 
+static char sg_RoleName[MY_ROLE_NAME_MAX_LEN] = {0};
+static char *sg_LogLevelStr [MY_LOG_LEVEL_MAX] = 
 {
-    [MY_TEST_LOG_LEVEL_INFO] = "INFO",
-    [MY_TEST_LOG_LEVEL_DEBUG] = "DEBUG",
-    [MY_TEST_LOG_LEVEL_WARNING] = "WARN",
-    [MY_TEST_LOG_LEVEL_ERROR] = "ERROR",
+    [MY_LOG_LEVEL_INFO] = "INFO",
+    [MY_LOG_LEVEL_DEBUG] = "DEBUG",
+    [MY_LOG_LEVEL_WARNING] = "WARN",
+    [MY_LOG_LEVEL_ERROR] = "ERROR",
 };
 static pthread_spinlock_t sg_LogSpinlock;
-static char sg_LogPath[MY_TEST_BUFF_128] = {0};
-static MY_TEST_LOG_LEVEL sg_LogLevel = MY_TEST_LOG_LEVEL_INFO;
+static char sg_LogPath[MY_BUFF_128] = {0};
+static MY_LOG_LEVEL sg_LogLevel = MY_LOG_LEVEL_INFO;
 static BOOL sg_LogModuleInited = FALSE;
 static FILE* sg_LogFileFp = NULL;
 
@@ -146,7 +146,7 @@ CommonReturn:
     if (fp)
         fclose(fp);
 
-    if (size >= MY_TEST_LOG_MEX_LEN)
+    if (size >= MY_LOG_MEX_LEN)
     {
         pthread_spin_lock(&sg_LogSpinlock);
         fprintf(sg_LogFileFp, "Lograting!\n");
@@ -168,7 +168,7 @@ LogSetLevel(
     uint32_t LogLevel
     )
 {
-    if (LogLevel <= MY_TEST_LOG_LEVEL_ERROR)
+    if (LogLevel <= MY_LOG_LEVEL_ERROR)
     {
         sg_LogLevel = LogLevel;
     }

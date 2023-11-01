@@ -46,7 +46,7 @@ HealthModuleInit(
     );
 
 int
-HealthMonitorAddEntry(
+HealthMonitorAdd(
     StatReportCB Cb,
     int TimeIntervals
     );

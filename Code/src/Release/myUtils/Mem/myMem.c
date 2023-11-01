@@ -7,7 +7,7 @@
 typedef struct{
     BOOL Registered;
     uint8_t MemModuleId;
-    char MemModuleName[MY_TEST_BUFF_32];
+    char MemModuleName[MY_BUFF_32];
     uint64_t MemBytesAlloced;
     uint64_t MemBytesFreed;
     pthread_spinlock_t MemSpinlock;
@@ -224,15 +224,23 @@ MyFree(
 }
 
 BOOL
+MemLeakSafetyCheckWithId(
+    int MemId
+    )
+{
+    if (sg_MemNodes[MemId].Registered)
+    {
+        LogInfo("alloced:%lld freed:%lld", sg_MemNodes[MemId].MemBytesAlloced, 
+            sg_MemNodes[MemId].MemBytesFreed);
+    }
+    return sg_MemNodes[MemId].MemBytesFreed == sg_MemNodes[MemId].MemBytesAlloced;
+}
+
+BOOL
 MemLeakSafetyCheck(
     void
     )
 {
-    if (sg_MemNodes[sg_MemModId].Registered)
-    {
-        LogInfo("alloced:%lld freed:%lld", sg_MemNodes[sg_MemModId].MemBytesAlloced, 
-            sg_MemNodes[sg_MemModId].MemBytesFreed);
-    }
-    return sg_MemNodes[sg_MemModId].MemBytesFreed == sg_MemNodes[sg_MemModId].MemBytesAlloced;
+    return MemLeakSafetyCheckWithId(sg_MemModId);
 }
 

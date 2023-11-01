@@ -1,5 +1,5 @@
-#ifndef _MY_TEST_INCLUDE_H_
-#define _MY_TEST_INCLUDE_H_
+#ifndef _MY_INCLUDE_H_
+#define _MY_INCLUDE_H_
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,21 +51,19 @@
 #define likely(x)                           __builtin_expect(!!(x), 1)
 #define unlikely(x)                         __builtin_expect(!!(x), 0)
 
-#define MY_TEST_BUFF_16                             16
-#define MY_TEST_BUFF_32                             32
-#define MY_TEST_BUFF_64                             64
-#define MY_TEST_BUFF_128                            128
-#define MY_TEST_BUFF_256                            256
-#define MY_TEST_BUFF_512                            512
-#define MY_TEST_BUFF_1024                           1024
+#define MY_BUFF_16                                  16
+#define MY_BUFF_32                                  32
+#define MY_BUFF_64                                  64
+#define MY_BUFF_128                                 128
+#define MY_BUFF_256                                 256
+#define MY_BUFF_512                                 512
+#define MY_BUFF_1024                                1024
 
-#define MY_TEST_TCP_SERVER_PORT                     15000
-#define MY_TEST_SERVER_CMD_LINE_PORT                15001
-#define MY_TEST_CLIENT_CMD_LINE_PORT                15002
-#define MY_TEST_MAX_CLIENT_NUM_PER_SERVER           128
-#define MY_TEST_KILL_SIGNAL                         SIGUSR1
+#define MY_TCP_SERVER_PORT                          15000
+#define MY_MAX_CLIENT_NUM_PER_SERVER                128
+#define MY_KILL_SIGNAL                              SIGUSR1
 
-#define MY_TEST_UATOMIC_INC(addr)                           __sync_fetch_and_add((addr), 1)
-#define MY_TEST_UATOMIC_DEC(addr)                           __sync_fetch_and_add((addr), -1)
+#define MY_UATOMIC_INC(addr)                           __sync_fetch_and_add((addr), 1)
+#define MY_UATOMIC_DEC(addr)                           __sync_fetch_and_add((addr), -1)
 
-#endif /* _MY_TEST_INCLUDE_H_ */
+#endif /* _MY_INCLUDE_H_ */
