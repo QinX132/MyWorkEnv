@@ -64,14 +64,14 @@ CommonReturn:
 int
 RecvMsg(
     int Fd,
-    __inout MY_TEST_MSG * RetMsg
+    __inout MY_MSG * RetMsg
     )
 {
     int ret = 0;
     int recvLen = 0;
     int currentLen = 0;
     int recvRet = 0;
-    char recvLogBuff[MY_TEST_BUFF_1024] = {0};
+    char recvLogBuff[MY_BUFF_1024] = {0};
     size_t recvLogLen = 0;
     size_t len = 0;
 
@@ -87,9 +87,9 @@ RecvMsg(
         goto CommonReturn;
     }
     
-    memset(RetMsg, 0, sizeof(MY_TEST_MSG));
+    memset(RetMsg, 0, sizeof(MY_MSG));
     // recv head
-    recvLen = sizeof(MY_TEST_MSG_HEAD);
+    recvLen = sizeof(MY_MSG_HEAD);
     currentLen = 0;
     for(; currentLen < recvLen;)
     {
@@ -130,7 +130,7 @@ RecvMsg(
     recvLogLen += len;
     // recv content
     recvLen = RetMsg->Head.MsgContentLen;
-    if (unlikely(recvLen > (int)sizeof(MY_TEST_MSG_CONT)))
+    if (unlikely(recvLen > (int)sizeof(MY_MSG_CONT)))
     {
         LogErr("Too long cont len %u", RetMsg->Head.MsgContentLen);
         ret = EINVAL;
@@ -139,7 +139,7 @@ RecvMsg(
     currentLen = 0;
     for(; currentLen < recvLen;)
     {
-        recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_TEST_MSG_HEAD)) + currentLen, recvLen - currentLen, 0);
+        recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_MSG_HEAD)) + currentLen, recvLen - currentLen, 0);
         if (recvRet > 0)
         {
             currentLen += recvRet;
@@ -174,11 +174,11 @@ RecvMsg(
     }
     recvLogLen += len;
     // recv tail
-    recvLen = sizeof(MY_TEST_MSG_TAIL);
+    recvLen = sizeof(MY_MSG_TAIL);
     currentLen = 0;
     for(; currentLen < recvLen;)
     {
-        recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_TEST_MSG_HEAD) + sizeof(MY_TEST_MSG_CONT)) + currentLen, recvLen - currentLen, 0);
+        recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_MSG_HEAD) + sizeof(MY_MSG_CONT)) + currentLen, recvLen - currentLen, 0);
         if (recvRet > 0)
         {
             currentLen += recvRet;
@@ -225,7 +225,7 @@ CommonReturn:
         else
         {
             MsgRecv ++;
-            MsgRecvBytes += sizeof(MY_TEST_MSG_HEAD) + RetMsg->Head.MsgContentLen + sizeof(MY_TEST_MSG_TAIL);
+            MsgRecvBytes += sizeof(MY_MSG_HEAD) + RetMsg->Head.MsgContentLen + sizeof(MY_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgSpinlock);
     }
@@ -233,20 +233,19 @@ CommonReturn:
 }
 
 MUST_CHECK
-MY_TEST_MSG *
+MY_MSG *
 NewMsg(
     void
     )
 {
-    MY_TEST_MSG* retMsg = NULL;
+    MY_MSG* retMsg = NULL;
     
     if (!sg_MsgModuleInited)
     {
         goto CommonReturn;
     }
     
-    retMsg = (MY_TEST_MSG*)MyCalloc(sizeof(MY_TEST_MSG));
-    memset(retMsg, 0, sizeof(MY_TEST_MSG));
+    retMsg = (MY_MSG*)MyCalloc(sizeof(MY_MSG));
 
 CommonReturn:
     return retMsg;
@@ -254,7 +253,7 @@ CommonReturn:
 
 void
 FreeMsg(
-    MY_TEST_MSG *Msg
+    MY_MSG *Msg
     )
 {
     if (Msg)
@@ -267,14 +266,14 @@ FreeMsg(
 int
 SendMsg(
     int Fd,
-    MY_TEST_MSG Msg
+    MY_MSG Msg
     )
 {
     int ret = 0;
-    int sendLen = sizeof(MY_TEST_MSG_HEAD);
+    int sendLen = 0;
     int currentLen = 0;
     int sendRet = 0;
-    char recvLogBuff[MY_TEST_BUFF_1024] = {0};
+    char recvLogBuff[MY_BUFF_1024] = {0};
     size_t recvLogLen = 0;
     size_t len = 0;
     
@@ -283,7 +282,7 @@ SendMsg(
         goto CommonReturn;
     }
     //send msg header
-    sendLen = sizeof(MY_TEST_MSG_HEAD);
+    sendLen = sizeof(MY_MSG_HEAD);
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
@@ -318,7 +317,7 @@ SendMsg(
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
-        sendRet = send(Fd, ((char*)&Msg.Head + sizeof(MY_TEST_MSG_HEAD)) + currentLen, sendLen - currentLen, 0);
+        sendRet = send(Fd, ((char*)&Msg.Head + sizeof(MY_MSG_HEAD)) + currentLen, sendLen - currentLen, 0);
         if (sendRet > 0)
         {
             currentLen += sendRet;
@@ -344,11 +343,11 @@ SendMsg(
     }
     recvLogLen += len;
     // send msg tail
-    sendLen = sizeof(MY_TEST_MSG_TAIL);
+    sendLen = sizeof(MY_MSG_TAIL);
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
-        sendRet = send(Fd, ((char*)&Msg.Head + sizeof(MY_TEST_MSG_HEAD) + sizeof(MY_TEST_MSG_CONT)) + currentLen, sendLen - currentLen, 0);
+        sendRet = send(Fd, ((char*)&Msg.Head + sizeof(MY_MSG_HEAD) + sizeof(MY_MSG_CONT)) + currentLen, sendLen - currentLen, 0);
         if (sendRet > 0)
         {
             currentLen += sendRet;
@@ -387,7 +386,7 @@ CommonReturn:
         else
         {
             MsgSend ++;
-            MsgSendBytes += sizeof(MY_TEST_MSG_HEAD) + Msg.Head.MsgContentLen + sizeof(MY_TEST_MSG_TAIL);
+            MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg.Head.MsgContentLen + sizeof(MY_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgSpinlock);
     }

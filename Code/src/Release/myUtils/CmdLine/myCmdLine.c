@@ -24,7 +24,7 @@ static ExitHandle sg_ExitHandle = NULL;
         __MY_CMDLINE_ARG("changeTPoolTimeout", "<Timout> (second)")  \
         __MY_CMDLINE_ARG("changeLogLevel", "<Level> (0-info 1-debug 2-warn 3-error)")
 
-static const MY_CMDLINE_CONT sg_CmdLineCont[MY_TEST_CMD_TYPE_UNUSED] = 
+static const MY_CMDLINE_CONT sg_CmdLineCont[MY_CMD_TYPE_UNUSED] = 
 {
 #undef __MY_CMDLINE_ARG
 #define __MY_CMDLINE_ARG(_opt_,_help_) \
@@ -78,7 +78,7 @@ _CmdServer_Init(
     fcntl(serverFd, F_SETFL, nonBlock);
     // bind
     localAddr.sin_family = AF_INET;
-    localAddr.sin_port = htons(MY_TEST_SERVER_CMD_LINE_PORT);
+    localAddr.sin_port = htons(MY_SERVER_CMD_LINE_PORT);
     localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
     if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
     {
@@ -136,9 +136,9 @@ _CmdServerHandleMsg(
 {
     int ret = 0;
     int len = 0;
-    char retString[MY_TEST_BUFF_128] = {0};
+    char retString[MY_BUFF_128] = {0};
     
-    if (strcasestr(Buff, sg_CmdLineCont[MY_TEST_CMD_TYPE_STOP].Opt))
+    if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt))
     {
         len = send(Fd, "Process stopped.", sizeof("Process stopped."), 0);
         if (len <= 0)
@@ -151,9 +151,9 @@ _CmdServerHandleMsg(
             sg_ExitHandle();
         }
     }
-    else if (strcasestr(Buff, sg_CmdLineCont[MY_TEST_CMD_TYPE_SHOWSTAT].Opt))
+    else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_SHOWSTAT].Opt))
     {
-        char statBuff[MY_TEST_BUFF_1024] = {0};
+        char statBuff[MY_BUFF_1024] = {0};
         int offset = 0;
         int loop = 0;
         statBuff[offset ++] = '\n';
@@ -183,7 +183,7 @@ _CmdServerHandleMsg(
             LogErr("Send CmdLine reply failed!");
         }
     }
-    else if (strcasestr(Buff, sg_CmdLineCont[MY_TEST_CMD_TYPE_CHANGE_TPOOL_TIMEOUT].Opt))
+    else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_TPOOL_TIMEOUT].Opt))
     {
         uint32_t timeout = (uint32_t)atoi(strchr(Buff, ' '));
         sprintf(retString, "Set tpool timeout as %u.", timeout);
@@ -195,7 +195,7 @@ _CmdServerHandleMsg(
         }
         TPoolSetTimeout(timeout);
     }
-    else if (strcasestr(Buff, sg_CmdLineCont[MY_TEST_CMD_TYPE_CHANGE_LOG_LEVEL].Opt))
+    else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_LOG_LEVEL].Opt))
     {
         uint32_t logLevel = (uint32_t)atoi(strchr(Buff, ' '));
         sprintf(retString, "Set log level as %u.", logLevel);
@@ -224,11 +224,11 @@ _CmdServer_WorkerFunc(
     int serverFd = -1;
     int epollFd = -1;
     int event_count = 0;
-    struct epoll_event event, waitEvents[MY_TEST_BUFF_128];
+    struct epoll_event event, waitEvents[MY_BUFF_128];
     int loop = 0;
-    int clientFd[MY_TEST_MAX_CLIENT_NUM_PER_SERVER] = {0};
+    int clientFd[MY_MAX_CLIENT_NUM_PER_SERVER] = {0};
     int clientFdCnt = 0;
-    char recvBuff[MY_TEST_BUFF_128] = {0};
+    char recvBuff[MY_BUFF_128] = {0};
     int recvLen = 0;
 
     ret = _CmdServer_Init(&serverFd, &epollFd);
@@ -243,7 +243,7 @@ _CmdServer_WorkerFunc(
     /* recv */
     while (1)
     {
-        event_count = epoll_wait(epollFd, waitEvents, MY_TEST_BUFF_128, 1000); //timeout 1s
+        event_count = epoll_wait(epollFd, waitEvents, MY_BUFF_128, 1000); //timeout 1s
         if (event_count == -1)
         {
             LogErr("Epoll wait failed! (%d:%s)", errno, My_StrErr(errno));
@@ -333,7 +333,7 @@ _CmdLineIsSupported(
         return FALSE;
     }
     
-    for(loop = 0; loop < MY_TEST_CMD_TYPE_UNUSED; loop ++)
+    for(loop = 0; loop < MY_CMD_TYPE_UNUSED; loop ++)
     {
         if (strstr(Cmd, sg_CmdLineCont[loop].Opt) == 0)
             return TRUE;
@@ -359,7 +359,7 @@ _CmdClient_WorkerFunc(
         _CmdLineUsage(NULL);
         goto CommonReturn;
     }
-    if (strcasecmp(sg_CmdLineCont[MY_TEST_CMD_TYPE_START].Opt, Cmd) == 0)
+    if (strcasecmp(sg_CmdLineCont[MY_CMD_TYPE_START].Opt, Cmd) == 0)
     {
         LogErr("Already running!");
         goto CommonReturn;
@@ -374,7 +374,7 @@ _CmdClient_WorkerFunc(
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
 
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(MY_TEST_SERVER_CMD_LINE_PORT);
+    serverAddr.sin_port = htons(MY_SERVER_CMD_LINE_PORT);
     inet_pton(AF_INET, "127.0.0.1", &serverIp);
     serverAddr.sin_addr.s_addr = serverIp;
     if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
@@ -395,7 +395,7 @@ _CmdClient_WorkerFunc(
         goto CommonReturn;
     }
 
-    char recvBuff[MY_TEST_BUFF_1024] = {0};
+    char recvBuff[MY_BUFF_1024] = {0};
     ret = recv(clientFd, recvBuff, sizeof(recvBuff), 0);
     if (ret > 0)
     {
@@ -420,9 +420,9 @@ CmdLineModuleInit(
 {
     int ret = 0;
     int pidFd = -1;
-    char path[MY_TEST_BUFF_64] = {0};
+    char path[MY_BUFF_64] = {0};
     int isRunning = 0;
-    char cmd[MY_TEST_BUFF_64] = {0};
+    char cmd[MY_BUFF_64] = {0};
     
     if (!InitArg || (InitArg->Argc != 2 && InitArg->Argc != 3) || !InitArg->Argv || !InitArg->RoleName || !InitArg->ExitFunc)
     {
@@ -445,14 +445,14 @@ CmdLineModuleInit(
     }
     sg_CmdLineRole = isRunning ? MY_CMDLINE_ROLE_CLT : MY_CMDLINE_ROLE_SVR;
     
-    if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_HELP].Opt) == 0)
+    if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_HELP].Opt) == 0)
     {
         goto CommonErr;
     }
-    else if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_START].Opt) != 0 && 
+    else if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_START].Opt) != 0 && 
             MY_CMDLINE_ROLE_SVR == sg_CmdLineRole)
     {
-        if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_TEST_CMD_TYPE_STOP].Opt) == 0)
+        if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt) == 0)
         {
             LogErr("%s is not running!", InitArg->RoleName);
         }

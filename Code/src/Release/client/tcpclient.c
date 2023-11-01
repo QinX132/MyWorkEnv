@@ -5,15 +5,15 @@
 #include "myModuleHealth.h"
 
 static uint32_t currentSessionId = 0;
-#define MY_TEST_CLIENT_ROLE_NAME                                "tcpclient"
-#define MY_TEST_CLIENT_CONF_ROOT                                MY_TEST_CLIENT_ROLE_NAME".conf"
+#define MY_CLIENT_ROLE_NAME                                 "tcpclient"
+#define MY_CLIENT_CONF_ROOT                                 MY_CLIENT_ROLE_NAME".conf"
 
 pthread_t *ClientMsgHandler = NULL;
 
 typedef struct {
-    char PeerIp[MY_TEST_BUFF_64];
-    MY_TEST_LOG_LEVEL LogLevel;
-    char LogFilePath[MY_TEST_BUFF_64];
+    char PeerIp[MY_BUFF_64];
+    MY_LOG_LEVEL LogLevel;
+    char LogFilePath[MY_BUFF_64];
 }
 CLIENT_CONF_PARAM;
 
@@ -48,7 +48,7 @@ _Client_CreateFd(
     }
 
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(MY_TEST_TCP_SERVER_PORT);
+    serverAddr.sin_port = htons(MY_TCP_SERVER_PORT);
     inet_pton(AF_INET, Ip, &serverIp);
     serverAddr.sin_addr.s_addr=serverIp;
     if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
@@ -85,14 +85,14 @@ _Client_WorkerFunc(
         goto CommonReturn;
     }
 
-    MY_TEST_MSG *msgToSend = NULL;
+    MY_MSG *msgToSend = NULL;
     /* send */
     while (1)
     {
         char buf[4096] = {0};
         scanf("%s", buf);
         uint32_t stringLen = strlen(buf) + 1;
-        if (strcasecmp(buf, MY_TEST_DISCONNECT_STRING) == 0)
+        if (strcasecmp(buf, MY_DISCONNECT_STRING) == 0)
         {
             break;
         }
@@ -118,7 +118,7 @@ _Client_WorkerFunc(
             goto CommonReturn;
         }
         
-        MY_TEST_MSG msg;
+        MY_MSG msg;
         (void)RecvMsg(clientFd, &msg);
 
         FreeMsg(msgToSend);
@@ -140,11 +140,11 @@ _Client_ParseConf(
 {
     int ret = 0;
     FILE *fp = NULL;
-    char line[MY_TEST_BUFF_128] = {0};
+    char line[MY_BUFF_128] = {0};
     char *ptr = NULL;
     int len = 0;
 
-    fp = fopen(MY_TEST_CLIENT_CONF_ROOT, "r");
+    fp = fopen(MY_CLIENT_CONF_ROOT, "r");
     if (!fp)
     {
         ret = MY_EIO;
@@ -173,7 +173,7 @@ _Client_ParseConf(
         else if ((ptr = strstr(line, "LogLevel=")) != NULL)
         {
             ClientConf->LogLevel = atoi(ptr + strlen("LogLevel="));
-            if (!(ClientConf->LogLevel >= MY_TEST_LOG_LEVEL_INFO && ClientConf->LogLevel <= MY_TEST_LOG_LEVEL_ERROR))
+            if (!(ClientConf->LogLevel >= MY_LOG_LEVEL_INFO && ClientConf->LogLevel <= MY_LOG_LEVEL_ERROR))
             {
                 ret = MY_EIO;
                 LogErr("Invalid loglevel!");
@@ -240,7 +240,7 @@ _Client_Init(
     // log init args
     initParam.LogArg->LogFilePath = clientConfParam.LogFilePath;
     initParam.LogArg->LogLevel = clientConfParam.LogLevel;
-    initParam.LogArg->RoleName = MY_TEST_CLIENT_ROLE_NAME;
+    initParam.LogArg->RoleName = MY_CLIENT_ROLE_NAME;
     // tpool init args
     initParam.TPoolArg->ThreadPoolSize = 5;
     initParam.TPoolArg->Timeout = 5;

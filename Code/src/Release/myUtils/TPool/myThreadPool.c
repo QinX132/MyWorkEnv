@@ -5,7 +5,7 @@
 #include "assert.h"
 #include "myCommonUtil.h"
 
-#define MY_TEST_TASK_TIME_OUT_DEFAULT_VAL                       5 //seconds
+#define MY_TASK_TIME_OUT_DEFAULT_VAL                            5 //seconds
 #define THREAD_POOL_SIZE                                        5
 
 typedef enum _MY_TPOOL_TASK_STATUS
@@ -43,7 +43,7 @@ MY_THREAD_POOL;
 //__thread 
 MY_THREAD_POOL* sg_ThreadPool = NULL;
 //__thread 
-int sg_TPoolTaskTimeout = MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
+int sg_TPoolTaskTimeout = MY_TASK_TIME_OUT_DEFAULT_VAL;
 //__thread 
 BOOL sg_TPoolModuleInited = FALSE;
 
@@ -64,7 +64,7 @@ _TPoolFunction(
     while (!threadPool->Exit) 
     {
         pthread_mutex_lock(&threadPool->Lock);
-        MY_TEST_UATOMIC_INC(&threadPool->CurrentThreadNum);
+        MY_UATOMIC_INC(&threadPool->CurrentThreadNum);
         while(pthread_cond_wait(&threadPool->Cond, &threadPool->Lock) == 0)
         {
             if (threadPool->Exit)
@@ -80,7 +80,7 @@ _TPoolFunction(
                 break;
             }
         };
-        MY_TEST_UATOMIC_DEC(&threadPool->CurrentThreadNum);
+        MY_UATOMIC_DEC(&threadPool->CurrentThreadNum);
         pthread_mutex_unlock(&threadPool->Lock);
 
         MY_LIST_FOR_EACH(&listHeadTmp, loop, tmp, MY_TPOOL_TASK, List)
@@ -103,7 +103,7 @@ _TPoolFunction(
                         pthread_cond_signal(loop->TaskCond);
                         pthread_mutex_unlock(loop->TaskLock);
                     }
-                    MY_TEST_UATOMIC_INC(&sg_TPoolTaskSucceed);
+                    MY_UATOMIC_INC(&sg_TPoolTaskSucceed);
                 }
                 MY_LIST_DEL_NODE(&loop->List);
                 MyFree(loop);
@@ -113,7 +113,7 @@ _TPoolFunction(
     }
 
 CommonReturn:
-    MY_TEST_UATOMIC_DEC(&threadPool->CurrentThreadNum);
+    MY_UATOMIC_DEC(&threadPool->CurrentThreadNum);
     LogInfo("Thread worker %lu exit.", pthread_self());
     pthread_exit(NULL);
 }
@@ -159,7 +159,7 @@ TPoolModuleInit(
     ret = pthread_attr_destroy(&attr);
     assert(!ret);
 
-    sg_TPoolTaskTimeout = InitArg->Timeout ? InitArg->Timeout : MY_TEST_TASK_TIME_OUT_DEFAULT_VAL;
+    sg_TPoolTaskTimeout = InitArg->Timeout ? InitArg->Timeout : MY_TASK_TIME_OUT_DEFAULT_VAL;
     sg_TPoolModuleInited = TRUE;
 
     // to make sure workers are ready
@@ -238,7 +238,7 @@ TPoolAddTask(
         MY_LIST_ADD_TAIL(&node->List, &sg_ThreadPool->TaskListHead);
         sg_ThreadPool->TaskListLength++;
         pthread_cond_signal(&sg_ThreadPool->Cond);
-        MY_TEST_UATOMIC_INC(&sg_TPoolTaskAdded);
+        MY_UATOMIC_INC(&sg_TPoolTaskAdded);
         LogInfo("Add task into tail success.");
     }
     pthread_mutex_unlock(&sg_ThreadPool->Lock);
@@ -303,7 +303,7 @@ TPoolAddTaskAndWait(
             taskAdded = TRUE;
             pthread_mutex_lock(taskLock);
             pthread_cond_signal(&sg_ThreadPool->Cond);
-            MY_TEST_UATOMIC_INC(&sg_TPoolTaskAdded);
+            MY_UATOMIC_INC(&sg_TPoolTaskAdded);
         }
         else
         {
@@ -335,7 +335,7 @@ TPoolAddTaskAndWait(
     pthread_mutex_unlock(taskLock);
     
 CommonReturn:
-    ret == MY_SUCCESS ? UNUSED(ret) : MY_TEST_UATOMIC_INC(&sg_TPoolTaskFailed);
+    ret == MY_SUCCESS ? UNUSED(ret) : MY_UATOMIC_INC(&sg_TPoolTaskFailed);
     if (taskInited)
     {
         if (!taskAdded || ret != ETIMEDOUT)

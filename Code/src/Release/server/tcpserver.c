@@ -5,19 +5,19 @@
 #include "myModuleHealth.h"
 #include "myModuleCommon.h"
 
-#define MY_TEST_MAX_EVENTS                                      1024
-#define MY_TEST_SERVER_ROLE_NAME                                "tcpserver"
-#define MY_TEST_SERVER_CONF_ROOT                                MY_TEST_SERVER_ROLE_NAME".conf"
+#define MY_MAX_EVENTS                                       1024
+#define MY_SERVER_ROLE_NAME                                 "tcpserver"
+#define MY_SERVER_CONF_ROOT                                 MY_SERVER_ROLE_NAME".conf"
 
 typedef struct {
-    MY_TEST_LOG_LEVEL LogLevel;
-    char LogFilePath[MY_TEST_BUFF_64];
+    MY_LOG_LEVEL LogLevel;
+    char LogFilePath[MY_BUFF_64];
 }
 SERVER_CONF_PARAM;
 
 static int sg_MsgId = 0;
 
-pthread_t *ServerMsgHandler = NULL;
+pthread_t *sg_ServerMsgHandler = NULL;
 static BOOL sg_ServerMsgHandlerShouldExit = FALSE;
 
 static int
@@ -38,7 +38,7 @@ _Server_CreateFd(
 
     struct sockaddr_in localAddr = {0};
     localAddr.sin_family = AF_INET;
-    localAddr.sin_port = htons(MY_TEST_TCP_SERVER_PORT);
+    localAddr.sin_port = htons(MY_TCP_SERVER_PORT);
     localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
 
     if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
@@ -49,7 +49,7 @@ _Server_CreateFd(
     }
     LogInfo("Bind serverFd: %d", serverFd);
 
-    if(0 > listen(serverFd, MY_TEST_MAX_CLIENT_NUM_PER_SERVER))
+    if(0 > listen(serverFd, MY_MAX_CLIENT_NUM_PER_SERVER))
     {
         ret = -1;
         LogErr("Listen failed");
@@ -69,11 +69,11 @@ static
 int 
 _Server_HandleMsg(
     int Fd,
-    MY_TEST_MSG Msg
+    MY_MSG Msg
     )
 {
     int ret = 0;
-    MY_TEST_MSG *replyMsg = NewMsg();
+    MY_MSG *replyMsg = NewMsg();
     struct timeval tv;
 
     if (!replyMsg)
@@ -81,7 +81,7 @@ _Server_HandleMsg(
         ret = -1;
         goto CommonReturn;
     }
-    if (strcasecmp((char*)Msg.Cont.VarLenCont, MY_TEST_DISCONNECT_STRING) == 0)
+    if (strcasecmp((char*)Msg.Cont.VarLenCont, MY_DISCONNECT_STRING) == 0)
     {
         ret = -1;
         goto CommonReturn;
@@ -116,7 +116,7 @@ _Server_WorkerFunc(
 {
     int serverFd = -1;
     int ret = 0;
-    MY_TEST_MSG msg;
+    MY_MSG msg;
     UNUSED(arg);
 
     serverFd = _Server_CreateFd();
@@ -128,7 +128,7 @@ _Server_WorkerFunc(
 
     int epoll_fd = -1;
     int event_count = 0;
-    struct epoll_event event, waitEvents[MY_TEST_MAX_EVENTS];
+    struct epoll_event event, waitEvents[MY_MAX_EVENTS];
 
     epoll_fd = epoll_create1(0);
     if (0 > epoll_fd)
@@ -148,7 +148,7 @@ _Server_WorkerFunc(
     /* recv */
     while (!sg_ServerMsgHandlerShouldExit)
     {
-        event_count = epoll_wait(epoll_fd, waitEvents, MY_TEST_MAX_EVENTS, 1000); 
+        event_count = epoll_wait(epoll_fd, waitEvents, MY_MAX_EVENTS, 1000); 
         for(loop = 0; loop < event_count; loop ++)
         {
             if (waitEvents[loop].data.fd == serverFd)
@@ -218,11 +218,11 @@ _Server_ParseConf(
 {
     int ret = 0;
     FILE *fp = NULL;
-    char line[MY_TEST_BUFF_128] = {0};
+    char line[MY_BUFF_128] = {0};
     char *ptr = NULL;
     int len = 0;
 
-    fp = fopen(MY_TEST_SERVER_CONF_ROOT, "r");
+    fp = fopen(MY_SERVER_CONF_ROOT, "r");
     if (!fp)
     {
         ret = MY_EIO;
@@ -237,7 +237,7 @@ _Server_ParseConf(
         else if ((ptr = strstr(line, "LogLevel=")) != NULL)
         {
             ServerConf->LogLevel = atoi(ptr + strlen("LogLevel="));
-            if (!(ServerConf->LogLevel >= MY_TEST_LOG_LEVEL_INFO && ServerConf->LogLevel <= MY_TEST_LOG_LEVEL_ERROR))
+            if (!(ServerConf->LogLevel >= MY_LOG_LEVEL_INFO && ServerConf->LogLevel <= MY_LOG_LEVEL_ERROR))
             {
                 ret = MY_EIO;
                 LogErr("Invalid loglevel!");
@@ -275,16 +275,16 @@ _Server_Exit(
     )
 {
     // msg handler
-    if (ServerMsgHandler)
+    if (sg_ServerMsgHandler)
     {
         sg_ServerMsgHandlerShouldExit = TRUE;
-        pthread_join(*ServerMsgHandler, NULL);
-        MyFree(ServerMsgHandler);
+        pthread_join(*sg_ServerMsgHandler, NULL);
+        MyFree(sg_ServerMsgHandler);
     }
     LogInfo("----------------- MsgHandler exited! -------------------");
 
     MyModuleCommonExit();
-    system("killall "MY_TEST_SERVER_ROLE_NAME);
+    system("killall "MY_SERVER_ROLE_NAME);
 }
 
 static int
@@ -320,12 +320,12 @@ _Server_Init(
     // cmd line init args
     initParam.CmdLineArg->Argc = argc;
     initParam.CmdLineArg->Argv = argv;
-    initParam.CmdLineArg->RoleName = MY_TEST_SERVER_ROLE_NAME;
+    initParam.CmdLineArg->RoleName = MY_SERVER_ROLE_NAME;
     initParam.CmdLineArg->ExitFunc = _Server_Exit;
     // log init args
     initParam.LogArg->LogFilePath = serverConf.LogFilePath;
     initParam.LogArg->LogLevel = serverConf.LogLevel;
-    initParam.LogArg->RoleName = MY_TEST_SERVER_ROLE_NAME;
+    initParam.LogArg->RoleName = MY_SERVER_ROLE_NAME;
     // tpool init args
     initParam.TPoolArg->ThreadPoolSize = 5;
     initParam.TPoolArg->Timeout = 5;
@@ -339,17 +339,17 @@ _Server_Init(
         goto CommonReturn;
     }
     
-    if (!ServerMsgHandler)
+    if (!sg_ServerMsgHandler)
     {
-        ServerMsgHandler = (pthread_t*)MyCalloc(sizeof(pthread_t));
-        if (!ServerMsgHandler)
+        sg_ServerMsgHandler = (pthread_t*)MyCalloc(sizeof(pthread_t));
+        if (!sg_ServerMsgHandler)
         {
             ret = MY_ENOMEM;
             LogErr("Apply memory failed!");
             goto CommonReturn;
         }
         sg_ServerMsgHandlerShouldExit = FALSE;
-        ret = pthread_create(ServerMsgHandler, NULL, _Server_WorkerFunc, NULL);
+        ret = pthread_create(sg_ServerMsgHandler, NULL, _Server_WorkerFunc, NULL);
         if (ret) 
         {
             LogErr("Failed to create thread");

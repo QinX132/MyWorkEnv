@@ -70,6 +70,11 @@ MemLeakSafetyCheck(
     void
     );
 
+BOOL
+MemLeakSafetyCheckWithId(
+    int MemId
+    );
+
 #ifdef __cplusplus
  }
 #endif
