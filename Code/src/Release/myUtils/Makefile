@@ -29,7 +29,6 @@ all: lib$(TARGET).a
 
 lib$(TARGET).a: $(OBJECTS)
 	ar rcs $@ $(OBJECTS)
-	make test
 
 so: $(OBJECTS)
 	$(CC) -shared -o lib$(TARGET).so $(OBJECTS)
@@ -39,7 +38,7 @@ so: $(OBJECTS)
 
 clean:
 	rm -f $(OBJECTS) lib$(TARGET).so lib$(TARGET).a 
-	pushd UnitTest && make clean && popd
+	pushd UnitTest > /dev/null && make clean && popd > /dev/null
 
 test:
-	pushd UnitTest && make DEBUG=$(DEBUG) -B && ./UnitTest && popd
+	pushd UnitTest > /dev/null && make -B && ./UnitTest && popd > /dev/null
