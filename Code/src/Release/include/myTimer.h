@@ -1,5 +1,5 @@
-#ifndef _MY_MODULE_HEALTH_H_
-#define _MY_MODULE_HEALTH_H_
+#ifndef _MY_MODULE_TIMER_H_
+#define _MY_MODULE_TIMER_H_
 
 #include "include.h"
 #include "myList.h"
@@ -8,15 +8,6 @@
 extern "C"{
 #endif
 
-typedef struct _MY_TIMER_EVENT_NODE
-{
-    struct event* Event;
-    MY_LIST_NODE List;
-}
-MY_TIMER_EVENT_NODE;
-
-typedef MY_TIMER_EVENT_NODE* TIMER_HANDLE;
-
 typedef enum _MY_TIMER_TYPE
 {
     MY_TIMER_TYPE_ONE_TIME,
@@ -24,9 +15,21 @@ typedef enum _MY_TIMER_TYPE
     
     MY_TIMER_TYPE_MAX_UNSPEC
 }
-MY_TIMER_TYPE;
+MY_TIMER_TYPE; 
 
 typedef void (*TimerCB)(evutil_socket_t, short, void*);
+
+typedef struct _MY_TIMER_EVENT_NODE
+{
+    struct event* Event;
+    TimerCB Cb;
+    void* Arg;
+    uint32_t IntervalMs;
+    MY_LIST_NODE List;
+}
+MY_TIMER_EVENT_NODE;
+
+typedef MY_TIMER_EVENT_NODE* TIMER_HANDLE;
 
 void
 TimerModuleExit(
@@ -50,6 +53,13 @@ TimerAdd(
 void
 TimerDel(
     __inout TIMER_HANDLE *TimerHandle
+    );
+
+int
+TimerModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
     );
 
 #ifdef __cplusplus

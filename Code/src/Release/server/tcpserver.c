@@ -309,6 +309,7 @@ _Server_Init(
 
     initParam.InitHealthModule = TRUE;
     initParam.InitMsgModule = TRUE;
+    initParam.InitTimerModule = TRUE;
     initParam.CmdLineArg = (MY_CMDLINE_MODULE_INIT_ARG*)calloc(sizeof(MY_CMDLINE_MODULE_INIT_ARG), 1);
     initParam.LogArg = (MY_LOG_MODULE_INIT_ARG*)calloc(sizeof(MY_LOG_MODULE_INIT_ARG), 1);
     initParam.TPoolArg = (MY_TPOOL_MODULE_INIT_ARG*)calloc(sizeof(MY_TPOOL_MODULE_INIT_ARG), 1);

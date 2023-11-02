@@ -53,6 +53,13 @@ CmdLineModuleExit(
     void
     );
 
+int
+CmdLineModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
+    );
+
 #ifdef __cplusplus
  }
 #endif

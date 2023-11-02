@@ -26,6 +26,11 @@ LogModuleInit(
 {
     int ret = 0;
 
+    if (sg_LogModuleInited)
+    {
+        goto CommonReturn;
+    }
+    
     if (!InitArg|| !InitArg->LogFilePath || !InitArg->RoleName)
     {
         ret = MY_EINVAL;
@@ -103,6 +108,7 @@ LogModuleExit(
 {
     if (sg_LogModuleInited)
     {
+        sg_LogModuleInited = FALSE;
         pthread_spin_lock(&sg_LogSpinlock);
         pthread_spin_unlock(&sg_LogSpinlock);
         pthread_spin_destroy(&sg_LogSpinlock);

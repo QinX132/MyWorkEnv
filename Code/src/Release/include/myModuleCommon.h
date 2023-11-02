@@ -19,6 +19,7 @@ typedef struct _MY_MODULES_INIT_PARAM
     BOOL InitMsgModule;
     BOOL InitHealthModule;
     MY_TPOOL_MODULE_INIT_ARG *TPoolArg;
+    BOOL InitTimerModule;
 }
 MY_MODULES_INIT_PARAM;
 

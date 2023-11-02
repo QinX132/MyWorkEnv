@@ -8,6 +8,7 @@ typedef struct _MY_TIMER_WORKER
     struct event_base* EventBase;
     BOOL IsRunning;
     MY_LIST_NODE EventList;     // MY_TIMER_EVENT_NODE
+    int32_t EventListLen;
     pthread_mutex_t Lock;
 }
 MY_TIMER_WORKER;
@@ -44,6 +45,7 @@ _TimerModuleEntry(
         LogErr("New event base failed!\n");
         goto CommonReturn;
     }
+    sg_TimerWorker.EventListLen = 0;
     // Set event base to be externally referencable and thread-safe
     if (evthread_make_base_notifiable(sg_TimerWorker.EventBase) < 0)
     {
@@ -60,6 +62,8 @@ _TimerModuleEntry(
     {
         goto CommonReturn;
     }
+    node->Cb = _TimerWorkerKeepalive;
+    node->IntervalMs = MY_TIMER_KEEPALIVE_INTERVAL * 1000;
     tv.tv_sec = MY_TIMER_KEEPALIVE_INTERVAL;
     tv.tv_usec = 0;
     pthread_mutex_lock(&sg_TimerWorker.Lock);
@@ -67,6 +71,7 @@ _TimerModuleEntry(
     event_add(node->Event, &tv);
     event_active(node->Event, EV_READ, 0);
     MY_LIST_ADD_TAIL(&node->List, &sg_TimerWorker.EventList);
+    sg_TimerWorker.EventListLen ++;
     node = NULL;
     pthread_mutex_unlock(&sg_TimerWorker.Lock);
 
@@ -91,6 +96,7 @@ TimerModuleExit(
     if (sg_TimerWorker.IsRunning)
     {
         pthread_mutex_lock(&sg_TimerWorker.Lock);
+        sg_TimerWorker.EventListLen = 0;
         if (!MY_LIST_IS_EMPTY(&sg_TimerWorker.EventList))
         {
             MY_LIST_FOR_EACH(&sg_TimerWorker.EventList, loop, tmp, MY_TIMER_EVENT_NODE, List)
@@ -119,8 +125,14 @@ TimerModuleInit(
 {
     int ret = MY_SUCCESS;
 
+    if (sg_TimerWorker.IsRunning)
+    {
+        goto CommonReturn;
+    }
+
     pthread_mutex_init(&sg_TimerWorker.Lock, NULL);
     MY_LIST_NODE_INIT(&sg_TimerWorker.EventList);
+    sg_TimerWorker.EventListLen = 0;
     ret = pthread_create(&sg_TimerWorker.ThreadId, NULL, _TimerModuleEntry, NULL);
     if (ret)
     {
@@ -172,10 +184,14 @@ TimerAdd(
         {
             goto CommonReturn;
         }
+        node->Cb = Cb;
+        node->Arg = Arg;
+        node->IntervalMs = IntervalMs;
         pthread_mutex_lock(&sg_TimerWorker.Lock);
         event_assign(node->Event, sg_TimerWorker.EventBase, -1, EV_READ | EV_PERSIST, Cb, Arg);
         event_add(node->Event, &tv);
         MY_LIST_ADD_TAIL(&node->List, &sg_TimerWorker.EventList);
+        sg_TimerWorker.EventListLen ++;
         pthread_mutex_unlock(&sg_TimerWorker.Lock);
         *TimerHandle = node;
     }
@@ -201,6 +217,7 @@ TimerDel(
     {
         pthread_mutex_lock(&sg_TimerWorker.Lock);
         MY_LIST_DEL_NODE(&(*TimerHandle)->List);
+        sg_TimerWorker.EventListLen --;
         event_del((*TimerHandle)->Event);
         MyFree((*TimerHandle)->Event);
         MyFree((*TimerHandle));
@@ -208,3 +225,40 @@ TimerDel(
         (*TimerHandle) = NULL;
     }
 }
+
+int
+TimerModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
+    )
+{
+    int ret = 0;
+    MY_TIMER_EVENT_NODE *tmp = NULL, *loop = NULL;
+    int len = 0;
+
+    len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, 
+            "<%s: (ListLength:%d)", ModuleNameByEnum(MY_MODULES_ENUM_TIMER), sg_TimerWorker.EventListLen);
+    if (!MY_LIST_IS_EMPTY(&sg_TimerWorker.EventList))
+    {
+        MY_LIST_FOR_EACH(&sg_TimerWorker.EventList, loop, tmp, MY_TIMER_EVENT_NODE, List)
+        {
+            len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, 
+                "[Handle:%p, Cb:%p, Arg:%p, IntervalMs:%u]", loop, loop->Cb, loop->Arg, loop->IntervalMs);
+            if (len < 0 || len >= BuffMaxLen - *Offset - len)
+            {
+                ret = MY_ENOMEM;
+                LogErr("Too long Msg!");
+                goto CommonReturn;
+            }
+        }
+        
+    }
+    
+    len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, ">");
+    
+CommonReturn:
+    *Offset += len;
+    return ret;
+}
+

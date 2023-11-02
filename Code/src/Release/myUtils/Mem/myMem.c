@@ -23,6 +23,7 @@ MY_MEM_PREFIX;
 
 static MY_MEM_NODE sg_MemNodes[MY_MEM_MODULE_MAX_NUM];
 static int sg_MemModId = -1;
+static BOOL sg_MemModIdInited = FALSE;
 
 int
 MemRegister(
@@ -83,6 +84,10 @@ MemModuleInit(
     void
     )
 {
+    if (sg_MemModIdInited)
+        return MY_SUCCESS;
+    
+    sg_MemModIdInited = TRUE;
     memset(sg_MemNodes, 0, sizeof(sg_MemNodes));
     return MemRegister(&sg_MemModId, "MemModuleCommon");
 }
@@ -92,6 +97,10 @@ MemModuleExit(
     void
     )
 {
+    if (!sg_MemModIdInited)
+        return ;
+
+    sg_MemModIdInited = FALSE;
     MemLeakSafetyCheck();
     return MemUnRegister(sg_MemModId);
 }

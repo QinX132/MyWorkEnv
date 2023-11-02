@@ -1,19 +1,24 @@
 #include "myModuleHealth.h"
 #include "myList.h"
 
+#define MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL                          30 //s
+
 const MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX] = 
 {
-    [MY_MODULES_ENUM_LOG]       =   {LogModuleCollectStat, 30},
-    [MY_MODULES_ENUM_MSG]       =   {MsgModuleCollectStat, 30},
-    [MY_MODULES_ENUM_TPOOL]     =   {TPoolModuleCollectStat, 30},
-    [MY_MODULES_ENUM_CMDLINE]   =   {NULL, 0xff},
-    [MY_MODULES_ENUM_MHEALTH]   =   {NULL, 0xff},
-    [MY_MODULES_ENUM_MEM]       =   {MemModuleCollectStat, 30}
+    [MY_MODULES_ENUM_LOG]       =   {LogModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
+    [MY_MODULES_ENUM_MSG]       =   {MsgModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
+    [MY_MODULES_ENUM_TPOOL]     =   {TPoolModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
+    [MY_MODULES_ENUM_CMDLINE]   =   {CmdLineModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
+    [MY_MODULES_ENUM_MHEALTH]   =   {HealthModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
+    [MY_MODULES_ENUM_MEM]       =   {MemModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
+    [MY_MODULES_ENUM_TIMER]     =   {TimerModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL}
 };
 
 typedef struct _MY_HEALTH_MONITOR_LIST_NODE
 {
     struct event* Event;
+    char Name[MY_HEALTH_MONITOR_NAME_MAX_LEN];
+    int32_t IntervalS;
     MY_LIST_NODE List;
 }
 MY_HEALTH_MONITOR_LIST_NODE;
@@ -24,6 +29,7 @@ typedef struct _MY_HEALTH_MONITOR
     struct event_base* EventBase;
     BOOL IsRunning;
     MY_LIST_NODE EventList;     // MY_HEALTH_MONITOR_LIST_NODE
+    int32_t EventListLen;
     pthread_spinlock_t Lock;
 }
 MY_HEALTH_MONITOR;
@@ -51,7 +57,7 @@ _HealthModuleStatCommonTemplate(
     void *Arg
     )
 {
-    char logBuff[MY_BUFF_256] = {0};
+    char logBuff[MY_BUFF_1024 * 3] = {0};
     int offset = 0;
     
     UNUSED(Arg);
@@ -102,10 +108,13 @@ _HealthModuleEntry(
     }
     tv.tv_sec = MY_HEALTH_MONITOR_KEEPALIVE_INTERVAL;
     tv.tv_usec = 0;
+    snprintf(node->Name, sizeof(node->Name), "%s", "Keepalive");
+    node->IntervalS = MY_HEALTH_MONITOR_KEEPALIVE_INTERVAL;
     event_assign(node->Event, sg_HealthWorker.EventBase, -1, EV_READ | EV_PERSIST, _HealthMonitorKeepalive, NULL);
     event_add(node->Event, &tv);
     event_active(node->Event, EV_READ, 0);
     MY_LIST_ADD_TAIL(&node->List, &sg_HealthWorker.EventList);
+    sg_HealthWorker.EventListLen ++;
     node = NULL;
     
     for(loop = 0; loop < MY_MODULES_ENUM_MAX; loop ++)
@@ -122,11 +131,14 @@ _HealthModuleEntry(
             {
                 goto CommonReturn;
             }
+            snprintf(node->Name, sizeof(node->Name), "%s", ModuleNameByEnum(loop));
+            node->IntervalS = sg_ModuleReprt[loop].Interval;
             tv.tv_sec = sg_ModuleReprt[loop].Interval;
             tv.tv_usec = 0;
             event_assign(node->Event, sg_HealthWorker.EventBase, -1, EV_PERSIST, _HealthModuleStatCommonTemplate, (void*)sg_ModuleReprt[loop].Cb);
             event_add(node->Event, &tv);
             MY_LIST_ADD_TAIL(&node->List, &sg_HealthWorker.EventList);
+            sg_HealthWorker.EventListLen ++;
             node = NULL;
         }
     }
@@ -145,7 +157,8 @@ CommonReturn:
 int
 HealthMonitorAdd(
     StatReportCB Cb,
-    int TimeIntervals
+    const char* Name,
+    int TimeIntervalS
     )
 {
     int ret = MY_SUCCESS;
@@ -164,12 +177,18 @@ HealthMonitorAdd(
         ret = MY_ENOMEM;
         goto CommonReturn;
     }
-    tv.tv_sec = TimeIntervals;
+    tv.tv_sec = TimeIntervalS;
     tv.tv_usec = 0;
+    if (Name)
+    {
+        snprintf(node->Name, sizeof(node->Name), "%s", Name);
+    }
+    node->IntervalS = TimeIntervalS;
     pthread_spin_lock(&sg_HealthWorker.Lock);
     event_assign(node->Event, sg_HealthWorker.EventBase, -1, EV_PERSIST, _HealthModuleStatCommonTemplate, (void*)Cb);
     event_add(node->Event, &tv);
     MY_LIST_ADD_TAIL(&node->List, &sg_HealthWorker.EventList);
+    sg_HealthWorker.EventListLen ++;
     pthread_spin_unlock(&sg_HealthWorker.Lock);
 
 CommonReturn:
@@ -190,6 +209,7 @@ HealthModuleExit(
     if (sg_HealthWorker.IsRunning)
     {
         pthread_spin_lock(&sg_HealthWorker.Lock);
+        sg_HealthWorker.EventListLen = 0;
         if (!MY_LIST_IS_EMPTY(&sg_HealthWorker.EventList))
         {
             MY_LIST_FOR_EACH(&sg_HealthWorker.EventList, loop, tmp, MY_HEALTH_MONITOR_LIST_NODE, List)
@@ -218,8 +238,14 @@ HealthModuleInit(
 {
     int ret = MY_SUCCESS;
 
+    if (sg_HealthWorker.IsRunning)
+    {
+        goto CommonReturn;
+    }
+    
     pthread_spin_init(&sg_HealthWorker.Lock, PTHREAD_PROCESS_PRIVATE);
     MY_LIST_NODE_INIT(&sg_HealthWorker.EventList);
+    sg_HealthWorker.EventListLen = 0;
     ret = pthread_create(&sg_HealthWorker.ThreadId, NULL, _HealthModuleEntry, NULL);
     if (ret)
     {
@@ -234,3 +260,40 @@ HealthModuleInit(
 CommonReturn:
     return ret;
 }
+
+int
+HealthModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
+    )
+{
+    int ret = 0;
+    MY_HEALTH_MONITOR_LIST_NODE *tmp = NULL, *loop = NULL;
+    int len = 0;
+
+    len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, 
+            "<%s: (ListLength:%d)", ModuleNameByEnum(MY_MODULES_ENUM_MHEALTH), sg_HealthWorker.EventListLen);
+    if (!MY_LIST_IS_EMPTY(&sg_HealthWorker.EventList))
+    {
+        MY_LIST_FOR_EACH(&sg_HealthWorker.EventList, loop, tmp, MY_HEALTH_MONITOR_LIST_NODE, List)
+        {
+            len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, 
+                "[EventName:%s, EventInterval:%d]", loop->Name, loop->IntervalS);
+            if (len < 0 || len >= BuffMaxLen - *Offset - len)
+            {
+                ret = MY_ENOMEM;
+                LogErr("Too long Msg!");
+                goto CommonReturn;
+            }
+        }
+        
+    }
+    
+    len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, ">");
+    
+CommonReturn:
+    *Offset += len;
+    return ret;
+}
+
