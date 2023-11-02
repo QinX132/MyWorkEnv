@@ -7,7 +7,8 @@ static const char* sg_ModulesName[MY_MODULES_ENUM_MAX] =
     [MY_MODULES_ENUM_TPOOL]     =   "TPool",
     [MY_MODULES_ENUM_CMDLINE]   =   "CmdLine",
     [MY_MODULES_ENUM_MHEALTH]   =   "MHealth",
-    [MY_MODULES_ENUM_MEM]       =   "Mem"
+    [MY_MODULES_ENUM_MEM]       =   "Mem",
+    [MY_MODULES_ENUM_TIMER]     =   "Timer"
 };
 
 const char*
@@ -87,6 +88,17 @@ MyModuleCommonInit(
         LogInfo("---------------- Health Module init success --------------");
     }
 
+    if (ModuleInitParam.InitTimerModule)
+    {
+        ret = TimerModuleInit();
+        if (ret)
+        {
+            LogErr("Init Timer module failed! %d %s", ret, My_StrErr(ret));
+            goto CommonReturn;
+        }
+        LogInfo("---------------- Timer Module init success --------------");
+    }
+
 CommonReturn:
     return ret;
 }
@@ -106,6 +118,9 @@ MyModuleCommonExit(
 
     HealthModuleExit();
     LogInfo("-------------------- Health Module exit ------------------");
+
+    TimerModuleExit();
+    LogInfo("-------------------- Timer Module exit -------------------");
 
     LogInfo("----------------------------------------------------------");
     LogModuleExit();

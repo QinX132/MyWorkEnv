@@ -15,6 +15,9 @@ MY_CMDLINE_CONT;
 static MY_CMDLINE_ROLE sg_CmdLineRole = MY_CMDLINE_ROLE_UNUSED;
 static pthread_t *sg_CmdLineWorker = NULL;
 static ExitHandle sg_ExitHandle = NULL;
+static BOOL sg_CmdLineShouldExit = TRUE;
+static int sg_CmdExecCnt = 0;
+static int sg_CmdConnectCnt = 0;
 
 #define MY_CMDLINE_ARG_LIST                 \
         __MY_CMDLINE_ARG("start", "start this program")  \
@@ -138,6 +141,8 @@ _CmdServerHandleMsg(
     int len = 0;
     char retString[MY_BUFF_128] = {0};
     
+    sg_CmdExecCnt ++;
+    
     if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt))
     {
         len = send(Fd, "Process stopped.", sizeof("Process stopped."), 0);
@@ -153,7 +158,7 @@ _CmdServerHandleMsg(
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_SHOWSTAT].Opt))
     {
-        char statBuff[MY_BUFF_1024] = {0};
+        char statBuff[MY_BUFF_1024 * 10] = {0};
         int offset = 0;
         int loop = 0;
         statBuff[offset ++] = '\n';
@@ -209,6 +214,7 @@ _CmdServerHandleMsg(
     }
     else
     {
+        sg_CmdExecCnt --;
         ret = MY_ENOSYS;
     }
     LogDbg("%d:%s", ret, My_StrErr(ret));
@@ -241,9 +247,9 @@ _CmdServer_WorkerFunc(
 
     UNUSED(arg);
     /* recv */
-    while (1)
+    while (!sg_CmdLineShouldExit)
     {
-        event_count = epoll_wait(epollFd, waitEvents, MY_BUFF_128, 1000); //timeout 1s
+        event_count = epoll_wait(epollFd, waitEvents, MY_BUFF_128, 100); //timeout 0.1s
         if (event_count == -1)
         {
             LogErr("Epoll wait failed! (%d:%s)", errno, My_StrErr(errno));
@@ -260,6 +266,7 @@ _CmdServer_WorkerFunc(
                 int tmpClientFd = -1;
                 struct sockaddr tmpClientaddr;
                 socklen_t tmpClientLen;
+                sg_CmdConnectCnt ++;
                 tmpClientFd = accept(serverFd, &tmpClientaddr, &tmpClientLen);
                 if (tmpClientFd != -1)
                 {
@@ -477,6 +484,7 @@ CmdLineModuleInit(
                 LogErr("Apply memory failed!");
                 goto CommonReturn;
             }
+            sg_CmdLineShouldExit = FALSE;
             ret = pthread_create(sg_CmdLineWorker, NULL, _CmdServer_WorkerFunc, NULL);
             if (ret) 
             {
@@ -515,5 +523,23 @@ CmdLineModuleExit(
     void
     )
 {
+    sg_CmdLineShouldExit = TRUE;
+    pthread_join(*sg_CmdLineWorker, NULL);
     MyFree(sg_CmdLineWorker);
 }
+
+int
+CmdLineModuleCollectStat(
+    char* Buff,
+    int BuffMaxLen,
+    int* Offset
+    )
+{
+    int ret = MY_SUCCESS;
+
+    *Offset += snprintf(Buff + *Offset , BuffMaxLen - *Offset, 
+            "<%s: [IsRunning:%s CmdConnectCnt:%d CmdExecCnt:%d]>", ModuleNameByEnum(MY_MODULES_ENUM_CMDLINE), 
+                sg_CmdLineShouldExit ? "FALSE" : "TRUE", sg_CmdConnectCnt, sg_CmdExecCnt); 
+    return ret;
+}
+

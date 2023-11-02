@@ -127,6 +127,11 @@ TPoolModuleInit(
     int ret = 0;
     pthread_attr_t attr;
 
+    if (sg_TPoolModuleInited)
+    {
+        goto CommonReturn;
+    }
+
     if (!InitArg || !InitArg->ThreadPoolSize)
     {
         ret = MY_EINVAL;
