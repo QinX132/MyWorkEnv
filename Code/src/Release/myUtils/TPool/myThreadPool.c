@@ -7,6 +7,7 @@
 
 #define MY_TASK_TIME_OUT_DEFAULT_VAL                            5 //seconds
 #define THREAD_POOL_SIZE                                        5
+#define THREAD_POOL_MAX_TASK_LENGTH                             1024
 
 typedef enum _MY_TPOOL_TASK_STATUS
 {
@@ -29,6 +30,14 @@ typedef struct _MY_TPOOL_TASK
 }
 MY_TPOOL_TASK;
 
+typedef struct _MY_THREAD_POOL_STATS
+{
+    int TaskAdded;
+    int TaskSucceed;
+    int TaskFailed;
+}
+MY_THREAD_POOL_STATS;
+
 typedef struct _MY_THREAD_POOL{
     pthread_mutex_t Lock;
     pthread_cond_t Cond;
@@ -36,53 +45,58 @@ typedef struct _MY_THREAD_POOL{
     volatile int CurrentThreadNum;
     MY_LIST_NODE TaskListHead;      // MY_TEST_THREAD_TASK
     int TaskListLength;
+    int TaskMaxLength;
+    int TaskDefaultTimeout;
     volatile BOOL Exit;
 }
 MY_THREAD_POOL;
 
 //__thread 
 MY_THREAD_POOL* sg_ThreadPool = NULL;
-//__thread 
-int sg_TPoolTaskTimeout = MY_TASK_TIME_OUT_DEFAULT_VAL;
+static MY_THREAD_POOL_STATS sg_ThreadPoolStats = {.TaskAdded = 0, .TaskSucceed = 0, .TaskFailed = 0};
 //__thread 
 BOOL sg_TPoolModuleInited = FALSE;
 
-static int sg_TPoolTaskAdded = 0;
-static int sg_TPoolTaskSucceed = 0;
-static int sg_TPoolTaskFailed = 0;
-
 static void* 
-_TPoolFunction(
+_TPoolProc(
     void* arg
     )
 {
     MY_THREAD_POOL* threadPool = (MY_THREAD_POOL*)arg;
     MY_TPOOL_TASK* loop = NULL, *tmp = NULL;
     MY_LIST_NODE listHeadTmp;
-    LogInfo("Thread worker %lu entering...", pthread_self());
+    BOOL hasTask = FALSE;
+    LogInfo("Thread worker %lu entering...", syscall(SYS_gettid));
     
     while (!threadPool->Exit) 
     {
+        hasTask = FALSE;
         pthread_mutex_lock(&threadPool->Lock);
         MY_UATOMIC_INC(&threadPool->CurrentThreadNum);
-        while(pthread_cond_wait(&threadPool->Cond, &threadPool->Lock) == 0)
-        {
+        LogInfo("Current thread num %d", threadPool->CurrentThreadNum);
+        do{
             if (threadPool->Exit)
             {
                 pthread_mutex_unlock(&threadPool->Lock);
                 goto CommonReturn;
             }
-            else
+            if (!MY_LIST_IS_EMPTY(&threadPool->TaskListHead))
             {
                 MY_LIST_HEAD_COPY(&listHeadTmp, &threadPool->TaskListHead);
                 MY_LIST_NODE_INIT(&threadPool->TaskListHead);
                 threadPool->TaskListLength = 0;
+                hasTask = TRUE;
                 break;
             }
-        };
+        }while(pthread_cond_wait(&threadPool->Cond, &threadPool->Lock) == 0);
         MY_UATOMIC_DEC(&threadPool->CurrentThreadNum);
         pthread_mutex_unlock(&threadPool->Lock);
 
+        if (!hasTask)
+        {
+            continue;
+        }
+        
         MY_LIST_FOR_EACH(&listHeadTmp, loop, tmp, MY_TPOOL_TASK, List)
         {
             if (loop && loop->TaskFunc)
@@ -99,11 +113,21 @@ _TPoolFunction(
                     loop->TaskFunc(loop->TaskArg);
                     if (loop->HasTimeOut)
                     {
-                        pthread_mutex_lock(loop->TaskLock);
-                        pthread_cond_signal(loop->TaskCond);
-                        pthread_mutex_unlock(loop->TaskLock);
+                        if (loop->TaskStat == MY_TPOOL_TASK_STATUS_TIMEOUT)
+                        {
+                            pthread_mutex_destroy(loop->TaskLock);
+                            pthread_cond_destroy(loop->TaskCond);
+                            MyFree(loop->TaskLock);
+                            MyFree(loop->TaskCond);
+                        }
+                        else
+                        {
+                            pthread_mutex_lock(loop->TaskLock);
+                            pthread_cond_signal(loop->TaskCond);
+                            pthread_mutex_unlock(loop->TaskLock);
+                        }
                     }
-                    MY_UATOMIC_INC(&sg_TPoolTaskSucceed);
+                    MY_UATOMIC_INC(&sg_ThreadPoolStats.TaskSucceed);
                 }
                 MY_LIST_DEL_NODE(&loop->List);
                 MyFree(loop);
@@ -114,7 +138,7 @@ _TPoolFunction(
 
 CommonReturn:
     MY_UATOMIC_DEC(&threadPool->CurrentThreadNum);
-    LogInfo("Thread worker %lu exit.", pthread_self());
+    LogInfo("Thread worker %lu exit.", syscall(SYS_gettid));
     pthread_exit(NULL);
 }
 
@@ -132,7 +156,7 @@ TPoolModuleInit(
         goto CommonReturn;
     }
 
-    if (!InitArg || !InitArg->ThreadPoolSize)
+    if (!InitArg || InitArg->ThreadPoolSize <= 0)
     {
         ret = MY_EINVAL;
         goto CommonReturn;
@@ -143,6 +167,9 @@ TPoolModuleInit(
         ret = MY_ENOMEM;
         goto CommonReturn;
     }
+    
+    sg_ThreadPool->TaskMaxLength = InitArg->TaskListMaxLength ? 
+        InitArg->TaskListMaxLength : THREAD_POOL_MAX_TASK_LENGTH;
     
     pthread_mutex_init(&sg_ThreadPool->Lock, NULL);
     pthread_cond_init(&sg_ThreadPool->Cond, NULL);
@@ -155,16 +182,21 @@ TPoolModuleInit(
     assert(!ret);
     ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     assert(!ret);
-
-    sg_ThreadPool->Threads = (pthread_t*)MyCalloc(sizeof(pthread_t) * InitArg->ThreadPoolSize);
-    for (loop = 0; loop < InitArg->ThreadPoolSize; loop ++) {
-        ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _TPoolFunction, (void*)sg_ThreadPool);
+    
+    pthread_mutex_lock(&sg_ThreadPool->Lock);
+    {
+        sg_ThreadPool->Threads = (pthread_t*)MyCalloc(sizeof(pthread_t) * InitArg->ThreadPoolSize);
+        for (loop = 0; loop < InitArg->ThreadPoolSize; loop ++)
+        {
+            ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _TPoolProc, (void*)sg_ThreadPool);
+            assert(!ret);
+        }
+        ret = pthread_attr_destroy(&attr);
         assert(!ret);
     }
-    ret = pthread_attr_destroy(&attr);
-    assert(!ret);
+    pthread_mutex_unlock(&sg_ThreadPool->Lock);
 
-    sg_TPoolTaskTimeout = InitArg->Timeout ? InitArg->Timeout : MY_TASK_TIME_OUT_DEFAULT_VAL;
+    sg_ThreadPool->TaskDefaultTimeout = InitArg->Timeout ? InitArg->Timeout : MY_TASK_TIME_OUT_DEFAULT_VAL;
     sg_TPoolModuleInited = TRUE;
 
     // to make sure workers are ready
@@ -177,7 +209,7 @@ TPoolModuleInit(
             break;
         }
         pthread_mutex_unlock(&sg_ThreadPool->Lock);
-        usleep(10 * 1000);
+        usleep(1 * 1000);
     };
     
 CommonReturn:
@@ -226,6 +258,20 @@ TPoolAddTask(
         ret = MY_EINVAL;
         goto CommonReturn;
     }
+    
+    pthread_mutex_lock(&sg_ThreadPool->Lock);
+    {
+        if (sg_ThreadPool->TaskListLength >= sg_ThreadPool->TaskMaxLength)
+        {
+            ret = MY_EBUSY;
+            LogErr("%d task in schedule!", sg_ThreadPool->TaskListLength);
+            pthread_cond_signal(&sg_ThreadPool->Cond);
+            pthread_mutex_unlock(&sg_ThreadPool->Lock);
+            goto CommonReturn;
+        }
+    }
+    pthread_mutex_unlock(&sg_ThreadPool->Lock);
+    
     node = (MY_TPOOL_TASK*)MyCalloc(sizeof(MY_TPOOL_TASK));
     if (!node) 
     {
@@ -241,9 +287,9 @@ TPoolAddTask(
     pthread_mutex_lock(&sg_ThreadPool->Lock);
     {
         MY_LIST_ADD_TAIL(&node->List, &sg_ThreadPool->TaskListHead);
-        sg_ThreadPool->TaskListLength++;
+        sg_ThreadPool->TaskListLength ++;
         pthread_cond_signal(&sg_ThreadPool->Cond);
-        MY_UATOMIC_INC(&sg_TPoolTaskAdded);
+        MY_UATOMIC_INC(&sg_ThreadPoolStats.TaskAdded);
         LogInfo("Add task into tail success.");
     }
     pthread_mutex_unlock(&sg_ThreadPool->Lock);
@@ -270,7 +316,7 @@ TPoolAddTaskAndWait(
     BOOL taskInited = FALSE;
     MY_TPOOL_TASK *node = NULL;
     
-    if (!sg_TPoolModuleInited || (sg_TPoolTaskTimeout <= 0 && TimeoutSec <= 0))
+    if (!sg_TPoolModuleInited || (sg_ThreadPool->TaskDefaultTimeout <= 0 && TimeoutSec <= 0))
     {
         ret = MY_EINVAL;
         goto CommonReturn;
@@ -308,7 +354,7 @@ TPoolAddTaskAndWait(
             taskAdded = TRUE;
             pthread_mutex_lock(taskLock);
             pthread_cond_signal(&sg_ThreadPool->Cond);
-            MY_UATOMIC_INC(&sg_TPoolTaskAdded);
+            MY_UATOMIC_INC(&sg_ThreadPoolStats.TaskAdded);
         }
         else
         {
@@ -327,8 +373,8 @@ TPoolAddTaskAndWait(
         }
         else
         {
-            ts.tv_sec += sg_TPoolTaskTimeout;
-            LogInfo("Add with timeout %d", sg_TPoolTaskTimeout);
+            ts.tv_sec += sg_ThreadPool->TaskDefaultTimeout;
+            LogInfo("Add with timeout %d", sg_ThreadPool->TaskDefaultTimeout);
         }
         ret = pthread_cond_timedwait(taskCond, taskLock, &ts);
     }
@@ -340,7 +386,7 @@ TPoolAddTaskAndWait(
     pthread_mutex_unlock(taskLock);
     
 CommonReturn:
-    ret == MY_SUCCESS ? UNUSED(ret) : MY_UATOMIC_INC(&sg_TPoolTaskFailed);
+    ret == MY_SUCCESS ? UNUSED(ret) : MY_UATOMIC_INC(&sg_ThreadPoolStats.TaskFailed);
     if (taskInited)
     {
         if (!taskAdded || ret != ETIMEDOUT)
@@ -370,8 +416,9 @@ TPoolModuleCollectStat(
         goto CommonReturn;
     }
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
-        "<%s:[TaskAdded=%d, TaskSucceed=%d, TaskFailed=%d], CurrentThreadNum=%d, TaskListLength=%d>",
-            ModuleNameByEnum(MY_MODULES_ENUM_TPOOL), sg_TPoolTaskAdded, sg_TPoolTaskSucceed, sg_TPoolTaskFailed,
+        "<%s:[TaskAdded=%d, TaskSucceed=%d, TaskFailed=%d, CurrentThreadNum=%d, TaskListLength=%d]>",
+            ModuleNameByEnum(MY_MODULES_ENUM_TPOOL), 
+            sg_ThreadPoolStats.TaskAdded, sg_ThreadPoolStats.TaskSucceed, sg_ThreadPoolStats.TaskFailed,
             sg_ThreadPool->CurrentThreadNum, sg_ThreadPool->TaskListLength);
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
@@ -392,5 +439,24 @@ TPoolSetTimeout(
     uint32_t Timeout
     )
 {
-    sg_TPoolTaskTimeout = Timeout;
+    if (sg_TPoolModuleInited && sg_ThreadPool)
+    {
+        pthread_mutex_lock(&sg_ThreadPool->Lock);
+        sg_ThreadPool->TaskDefaultTimeout = Timeout;
+        pthread_mutex_unlock(&sg_ThreadPool->Lock);
+    }
 }
+
+void
+TPoolSetMaxQueueLength(
+    int32_t QueueLen
+    )
+{
+    if (sg_TPoolModuleInited && sg_ThreadPool)
+    {
+        pthread_mutex_lock(&sg_ThreadPool->Lock);
+        sg_ThreadPool->TaskMaxLength = QueueLen;
+        pthread_mutex_unlock(&sg_ThreadPool->Lock);
+    }
+}
+

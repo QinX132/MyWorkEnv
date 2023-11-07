@@ -3,7 +3,6 @@
 
 #define MY_LOG_MEX_LEN                                  (50 * 1024 * 1024)
 
-static char sg_RoleName[MY_ROLE_NAME_MAX_LEN] = {0};
 static char *sg_LogLevelStr [MY_LOG_LEVEL_MAX] = 
 {
     [MY_LOG_LEVEL_INFO] = "INFO",
@@ -11,13 +10,35 @@ static char *sg_LogLevelStr [MY_LOG_LEVEL_MAX] =
     [MY_LOG_LEVEL_WARNING] = "WARN",
     [MY_LOG_LEVEL_ERROR] = "ERROR",
 };
-static pthread_spinlock_t sg_LogSpinlock;
-static char sg_LogPath[MY_BUFF_128] = {0};
-static MY_LOG_LEVEL sg_LogLevel = MY_LOG_LEVEL_INFO;
-static BOOL sg_LogModuleInited = FALSE;
-static FILE* sg_LogFileFp = NULL;
 
-static int sg_LogPrinted = 0;
+typedef struct _MY_LOG_WORKER_STATS
+{
+    int LogPrinted;
+    long long LogSize;
+}
+MY_LOG_WORKER_STATS;
+
+typedef struct _MY_LOG_WORKER
+{
+    char RoleName[MY_ROLE_NAME_MAX_LEN];
+    pthread_spinlock_t Lock;
+    char LogPath[MY_BUFF_128];
+    MY_LOG_LEVEL LogLevel;
+    BOOL Inited;
+    FILE* Fp;
+    MY_LOG_WORKER_STATS Stats;
+}
+MY_LOG_WORKER;
+
+
+static MY_LOG_WORKER sg_LogWorker = {
+        .RoleName = {0},
+        .LogPath = {0},
+        .LogLevel = MY_LOG_LEVEL_INFO,
+        .Inited = FALSE,
+        .Fp = NULL,
+        .Stats = {.LogPrinted = 0}
+    };
 
 int
 LogModuleInit(
@@ -26,7 +47,7 @@ LogModuleInit(
 {
     int ret = 0;
 
-    if (sg_LogModuleInited)
+    if (sg_LogWorker.Inited)
     {
         goto CommonReturn;
     }
@@ -37,19 +58,19 @@ LogModuleInit(
         LogErr("Too long role name!");
         goto CommonReturn;
     }
-    strcpy(sg_RoleName, InitArg->RoleName);
-    strcpy(sg_LogPath, InitArg->LogFilePath);
-    sg_LogLevel = InitArg->LogLevel;
-    pthread_spin_init(&sg_LogSpinlock, PTHREAD_PROCESS_PRIVATE);
+    strncpy(sg_LogWorker.RoleName, InitArg->RoleName, sizeof(sg_LogWorker.RoleName));
+    strncpy(sg_LogWorker.LogPath, InitArg->LogFilePath, sizeof(sg_LogWorker.LogPath));
+    sg_LogWorker.LogLevel = InitArg->LogLevel;
+    pthread_spin_init(&sg_LogWorker.Lock, PTHREAD_PROCESS_PRIVATE);
 
-    sg_LogFileFp = fopen(sg_LogPath, "a");
-    if (!sg_LogFileFp)
+    sg_LogWorker.Fp = fopen(sg_LogWorker.LogPath, "a");
+    if (!sg_LogWorker.Fp)
     {
         ret = MY_EIO;
         LogErr("Open file failed!");
         goto CommonReturn;
     }
-    sg_LogModuleInited = TRUE;
+    sg_LogWorker.Inited = TRUE;
     
 CommonReturn:
     return ret;
@@ -66,12 +87,12 @@ LogPrint(
 {
     va_list args;
 
-    if (level < (int)sg_LogLevel)
+    if (level < (int)sg_LogWorker.LogLevel)
     {
         return;
     }
 
-    if (!sg_LogModuleInited)
+    if (!sg_LogWorker.Inited)
     {
         va_start(args, Fmt);
         vprintf(Fmt, args);
@@ -80,7 +101,7 @@ LogPrint(
         return;
     }
     
-    pthread_spin_lock(&sg_LogSpinlock);
+    pthread_spin_lock(&sg_LogWorker.Lock);
     
     va_start(args, Fmt);
     struct timeval tv;
@@ -90,15 +111,32 @@ LogPrint(
     char timestamp[24] = {0};
     strftime(timestamp, sizeof(timestamp), "%Y/%m/%d_%H:%M:%S", tm_info);
     int milliseconds = tv.tv_usec / 1000;
-    fprintf(sg_LogFileFp, "[%s.%03d][%s][%s-%d]%s:", timestamp, milliseconds, sg_LogLevelStr[level], Function, Line, sg_RoleName);
-    vfprintf(sg_LogFileFp, Fmt, args);
+    fprintf(sg_LogWorker.Fp, "[%s.%03d][%s][%s-%d]%s:", timestamp, milliseconds, sg_LogLevelStr[level], Function, Line, sg_LogWorker.RoleName);
+    vfprintf(sg_LogWorker.Fp, Fmt, args);
     va_end(args);
-    fprintf(sg_LogFileFp, "\n");
-    fflush(sg_LogFileFp);
+    fprintf(sg_LogWorker.Fp, "\n");
+    fflush(sg_LogWorker.Fp);
 
-    sg_LogPrinted ++;
+    sg_LogWorker.Stats.LogPrinted ++;
+    sg_LogWorker.Stats.LogSize = ftell(sg_LogWorker.Fp);
     
-    pthread_spin_unlock(&sg_LogSpinlock);
+    pthread_spin_unlock(&sg_LogWorker.Lock);
+    
+    if (sg_LogWorker.Stats.LogSize >= MY_LOG_MEX_LEN)
+    {
+        pthread_spin_lock(&sg_LogWorker.Lock);
+        fprintf(sg_LogWorker.Fp, "Lograting!\n");
+        fsync(fileno(sg_LogWorker.Fp));
+        fclose(sg_LogWorker.Fp);
+        char cmd[128] = {0};
+        if (strlen(sg_LogWorker.LogPath))
+        {
+            sprintf(cmd, "mv %s %s.0", sg_LogWorker.LogPath, sg_LogWorker.LogPath);
+        }
+        system(cmd);
+        sg_LogWorker.Fp = fopen(sg_LogWorker.LogPath, "a");
+        pthread_spin_unlock(&sg_LogWorker.Lock);
+    }
 }
 
 void
@@ -106,13 +144,14 @@ LogModuleExit(
     void
     )
 {
-    if (sg_LogModuleInited)
+    if (sg_LogWorker.Inited)
     {
-        sg_LogModuleInited = FALSE;
-        pthread_spin_lock(&sg_LogSpinlock);
-        pthread_spin_unlock(&sg_LogSpinlock);
-        pthread_spin_destroy(&sg_LogSpinlock);
-        // fclose(sg_LogFileFp);  //we do not close fp
+        sg_LogWorker.Inited = FALSE;
+        pthread_spin_lock(&sg_LogWorker.Lock);
+        pthread_spin_unlock(&sg_LogWorker.Lock);
+        pthread_spin_destroy(&sg_LogWorker.Lock);
+        fsync(fileno(sg_LogWorker.Fp));
+        fclose(sg_LogWorker.Fp);  //we do not close fp
     }
 }
 
@@ -124,19 +163,11 @@ LogModuleCollectStat(
     )
 {
     int ret = 0;
-    FILE* fp = fopen(sg_LogPath, "rb");
-    long long size = 0;
     int len = 0;
     
-    if (!fp) 
-    {
-        LogErr("Failed to open file: %s\n", sg_LogPath);
-        goto CommonReturn;
-    }
-    fseek(fp, 0, SEEK_END);
-    size = ftell(fp);
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
-        "<%s:[LogPrinted:%d, LogSize:%lld]>", ModuleNameByEnum(MY_MODULES_ENUM_LOG), sg_LogPrinted, size);
+        "<%s:[LogPrinted:%d, LogSize:%lld Bytes]>", ModuleNameByEnum(MY_MODULES_ENUM_LOG), 
+        sg_LogWorker.Stats.LogPrinted, sg_LogWorker.Stats.LogSize);
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
         ret = MY_ENOMEM;
@@ -149,23 +180,6 @@ LogModuleCollectStat(
     }
     
 CommonReturn:
-    if (fp)
-        fclose(fp);
-
-    if (size >= MY_LOG_MEX_LEN)
-    {
-        pthread_spin_lock(&sg_LogSpinlock);
-        fprintf(sg_LogFileFp, "Lograting!\n");
-        fclose(sg_LogFileFp);
-        char cmd[128] = {0};
-        if (strlen(sg_LogPath))
-        {
-            sprintf(cmd, "mv %s %s.0", sg_LogPath, sg_LogPath);
-        }
-        system(cmd);
-        sg_LogFileFp = fopen(sg_LogPath, "a");
-        pthread_spin_unlock(&sg_LogSpinlock);
-    }
     return ret;
 }
 
@@ -176,6 +190,6 @@ LogSetLevel(
 {
     if (LogLevel <= MY_LOG_LEVEL_ERROR)
     {
-        sg_LogLevel = LogLevel;
+        sg_LogWorker.LogLevel = LogLevel;
     }
 }

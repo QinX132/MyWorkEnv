@@ -90,6 +90,7 @@ _Client_WorkerFunc(
     while (1)
     {
         char buf[4096] = {0};
+        printf("Send:");
         scanf("%s", buf);
         uint32_t stringLen = strlen(buf) + 1;
         if (strcasecmp(buf, MY_DISCONNECT_STRING) == 0)
@@ -120,6 +121,7 @@ _Client_WorkerFunc(
         
         MY_MSG msg;
         (void)RecvMsg(clientFd, &msg);
+        printf("\t Recv:%s\n", (char*)msg.Cont.VarLenCont);
 
         FreeMsg(msgToSend);
         msgToSend = NULL;
@@ -245,6 +247,7 @@ _Client_Init(
     // tpool init args
     initParam.TPoolArg->ThreadPoolSize = 5;
     initParam.TPoolArg->Timeout = 5;
+    initParam.TPoolArg->TaskListMaxLength = 1024;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {

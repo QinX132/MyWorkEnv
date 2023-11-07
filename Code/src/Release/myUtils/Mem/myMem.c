@@ -18,7 +18,7 @@ typedef struct{
     uint8_t     MemModuleId;
     uint32_t    Size    : 31;
     uint32_t    Freed   : 1;
-}__attribute__((packed))
+}//__attribute__((packed))  // This will lead to serious problems related to locks
 MY_MEM_PREFIX;
 
 static MY_MEM_NODE sg_MemNodes[MY_MEM_MODULE_MAX_NUM];

@@ -11,6 +11,7 @@ typedef struct _MY_TPOOL_MODULE_INIT_ARG
 {
     int ThreadPoolSize;
     int Timeout;
+    int TaskListMaxLength;
 }
 MY_TPOOL_MODULE_INIT_ARG;
 
@@ -47,6 +48,11 @@ TPoolModuleCollectStat(
 void 
 TPoolSetTimeout(
     uint32_t Timeout
+    );
+
+void
+TPoolSetMaxQueueLength(
+    int32_t QueueLen
     );
 
 #ifdef __cplusplus
