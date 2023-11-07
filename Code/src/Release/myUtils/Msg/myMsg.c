@@ -2,22 +2,32 @@
 #include "myLogIO.h"
 #include "myModuleHealth.h"
 
-static uint32_t MsgSend = 0;
-static uint64_t MsgSendBytes = 0;
-static uint32_t MsgSendFailed = 0;
-static uint32_t MsgRecv = 0;
-static uint64_t MsgRecvBytes = 0;
-static uint32_t MsgRecvFailed = 0;
-static pthread_spinlock_t sg_MsgSpinlock;
-static BOOL sg_MsgModuleInited = FALSE;
+typedef struct _MY_MSG_STATS
+{
+    uint32_t MsgSend;
+    uint64_t MsgSendBytes;
+    uint32_t MsgSendFailed;
+    uint32_t MsgRecv;
+    uint64_t MsgRecvBytes;
+    uint32_t MsgRecvFailed;
+    pthread_spinlock_t Lock;
+    BOOL Inited;
+}
+MY_MSG_STATS;
+
+static MY_MSG_STATS sg_MsgStats = {.Inited = FALSE};
 
 void
 MsgModuleInit(
     void
     )
 {
-    pthread_spin_init(&sg_MsgSpinlock, PTHREAD_PROCESS_PRIVATE);
-    sg_MsgModuleInited = TRUE;
+    if (! sg_MsgStats.Inited)
+    {
+        memset(&sg_MsgStats, 0, sizeof(sg_MsgStats));
+        pthread_spin_init(&sg_MsgStats.Lock, PTHREAD_PROCESS_PRIVATE);
+        sg_MsgStats.Inited = TRUE;
+    }
 }
 
 void
@@ -25,11 +35,11 @@ MsgModuleExit(
     void
     )
 {
-    if (sg_MsgModuleInited)
+    if (sg_MsgStats.Inited)
     {
-        pthread_spin_lock(&sg_MsgSpinlock);
-        pthread_spin_unlock(&sg_MsgSpinlock);
-        pthread_spin_destroy(&sg_MsgSpinlock);
+        pthread_spin_lock(&sg_MsgStats.Lock);
+        pthread_spin_unlock(&sg_MsgStats.Lock);
+        pthread_spin_destroy(&sg_MsgStats.Lock);
     }
 }
 
@@ -45,7 +55,8 @@ MsgModuleCollectStat(
     
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
         "<%s:[MsgSend=%u, MsgSendBytes=%llu, MsgSendFailed=%u, MsgRecv=%u, MsgRecvBytes=%llu, MsgRecvFailed=%u]>",
-        ModuleNameByEnum(MY_MODULES_ENUM_MSG), MsgSend, MsgSendBytes, MsgSendFailed, MsgRecv, MsgRecvBytes, MsgRecvFailed);
+        ModuleNameByEnum(MY_MODULES_ENUM_MSG), sg_MsgStats.MsgSend, sg_MsgStats.MsgSendBytes, 
+        sg_MsgStats.MsgSendFailed, sg_MsgStats.MsgRecv, sg_MsgStats.MsgRecvBytes, sg_MsgStats.MsgRecvFailed);
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
         ret = MY_ENOMEM;
@@ -75,7 +86,7 @@ RecvMsg(
     size_t recvLogLen = 0;
     size_t len = 0;
 
-    if (!sg_MsgModuleInited)
+    if (!sg_MsgStats.Inited)
     {
         goto CommonReturn;
     }
@@ -215,19 +226,19 @@ RecvMsg(
 
     LogInfo("%s", recvLogBuff);
 CommonReturn:
-    if (sg_MsgModuleInited)
+    if (sg_MsgStats.Inited)
     {
-        pthread_spin_lock(&sg_MsgSpinlock);
+        pthread_spin_lock(&sg_MsgStats.Lock);
         if (ret != 0)
         {
-            MsgRecvFailed ++;
+            sg_MsgStats.MsgRecvFailed ++;
         }
         else
         {
-            MsgRecv ++;
-            MsgRecvBytes += sizeof(MY_MSG_HEAD) + RetMsg->Head.MsgContentLen + sizeof(MY_MSG_TAIL);
+            sg_MsgStats.MsgRecv ++;
+            sg_MsgStats.MsgRecvBytes += sizeof(MY_MSG_HEAD) + RetMsg->Head.MsgContentLen + sizeof(MY_MSG_TAIL);
         }
-        pthread_spin_unlock(&sg_MsgSpinlock);
+        pthread_spin_unlock(&sg_MsgStats.Lock);
     }
     return ret;
 }
@@ -240,7 +251,7 @@ NewMsg(
 {
     MY_MSG* retMsg = NULL;
     
-    if (!sg_MsgModuleInited)
+    if (!sg_MsgStats.Inited)
     {
         goto CommonReturn;
     }
@@ -277,7 +288,7 @@ SendMsg(
     size_t recvLogLen = 0;
     size_t len = 0;
     
-    if (!sg_MsgModuleInited)
+    if (!sg_MsgStats.Inited)
     {
         goto CommonReturn;
     }
@@ -376,19 +387,19 @@ SendMsg(
     LogInfo("%s", recvLogBuff);
 
 CommonReturn:
-    if (sg_MsgModuleInited)
+    if (sg_MsgStats.Inited)
     {
-        pthread_spin_lock(&sg_MsgSpinlock);
+        pthread_spin_lock(&sg_MsgStats.Lock);
         if (ret != 0)
         {
-            MsgSendFailed ++;
+            sg_MsgStats.MsgSendFailed ++;
         }
         else
         {
-            MsgSend ++;
-            MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg.Head.MsgContentLen + sizeof(MY_MSG_TAIL);
+            sg_MsgStats.MsgSend ++;
+            sg_MsgStats.MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg.Head.MsgContentLen + sizeof(MY_MSG_TAIL);
         }
-        pthread_spin_unlock(&sg_MsgSpinlock);
+        pthread_spin_unlock(&sg_MsgStats.Lock);
     }
     return ret;
 }

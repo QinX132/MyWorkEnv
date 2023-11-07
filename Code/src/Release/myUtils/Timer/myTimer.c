@@ -29,6 +29,36 @@ _TimerWorkerKeepalive(
     return ;
 }
 
+static
+void
+_TimerEventLogCallBack(
+    int Severity,
+    const char *Msg
+    )
+{
+    if (Msg)
+    {
+        switch (Severity)
+        {
+            case _EVENT_LOG_DEBUG:
+                /* Ignore massive debug logs*/
+                break;
+            case _EVENT_LOG_MSG:
+                LogInfo("[LibEvent] %s\n", Msg);
+                break;
+            case _EVENT_LOG_WARN:
+                LogWarn("[LibEvent] %s\n", Msg);
+                break;
+            case _EVENT_LOG_ERR:
+                LogErr("[LibEvent] %s\n", Msg);
+                break;
+            default:
+                LogErr("[LibEvent] %s\n", Msg);
+                break; /* never reached */
+        }
+    }
+}
+
 static void*
 _TimerModuleEntry(
     void* Arg
@@ -51,6 +81,8 @@ _TimerModuleEntry(
     {
         goto CommonReturn;
     }
+    (void)event_enable_debug_logging(FALSE);
+    (void)event_set_log_callback(_TimerEventLogCallBack);
     // keep alive
     node = (MY_TIMER_EVENT_NODE*)MyCalloc(sizeof(MY_TIMER_EVENT_NODE));
     if (!node)
@@ -238,7 +270,7 @@ TimerModuleCollectStat(
     int len = 0;
 
     len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, 
-            "<%s: (ListLength:%d)", ModuleNameByEnum(MY_MODULES_ENUM_TIMER), sg_TimerWorker.EventListLen);
+            "<%s:(ListLength:%d)", ModuleNameByEnum(MY_MODULES_ENUM_TIMER), sg_TimerWorker.EventListLen);
     if (!MY_LIST_IS_EMPTY(&sg_TimerWorker.EventList))
     {
         MY_LIST_FOR_EACH(&sg_TimerWorker.EventList, loop, tmp, MY_TIMER_EVENT_NODE, List)

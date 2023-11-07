@@ -36,6 +36,36 @@ MY_HEALTH_MONITOR;
 
 static MY_HEALTH_MONITOR sg_HealthWorker = {.IsRunning = FALSE};
 
+static
+void
+_HealthEventLogCallBack(
+    int Severity,
+    const char *Msg
+    )
+{
+    if (Msg)
+    {
+        switch (Severity)
+        {
+            case _EVENT_LOG_DEBUG:
+                /* Ignore massive debug logs*/
+                break;
+            case _EVENT_LOG_MSG:
+                LogInfo("[LibEvent] %s\n", Msg);
+                break;
+            case _EVENT_LOG_WARN:
+                LogWarn("[LibEvent] %s\n", Msg);
+                break;
+            case _EVENT_LOG_ERR:
+                LogErr("[LibEvent] %s\n", Msg);
+                break;
+            default:
+                LogErr("[LibEvent] %s\n", Msg);
+                break; /* never reached */
+        }
+    }
+}
+
 #define MY_HEALTH_MONITOR_KEEPALIVE_INTERVAL                1 // s
 void
 _HealthMonitorKeepalive(
@@ -95,6 +125,8 @@ _HealthModuleEntry(
     {
         goto CommonReturn;
     }
+    (void)event_enable_debug_logging(FALSE);
+    (void)event_set_log_callback(_HealthEventLogCallBack);
     // keep alive
     node = (MY_HEALTH_MONITOR_LIST_NODE*)MyCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
     if (!node)
@@ -273,7 +305,7 @@ HealthModuleCollectStat(
     int len = 0;
 
     len += snprintf(Buff + *Offset + len, BuffMaxLen - *Offset - len, 
-            "<%s: (ListLength:%d)", ModuleNameByEnum(MY_MODULES_ENUM_MHEALTH), sg_HealthWorker.EventListLen);
+            "<%s:(ListLength:%d)", ModuleNameByEnum(MY_MODULES_ENUM_MHEALTH), sg_HealthWorker.EventListLen);
     if (!MY_LIST_IS_EMPTY(&sg_HealthWorker.EventList))
     {
         MY_LIST_FOR_EACH(&sg_HealthWorker.EventList, loop, tmp, MY_HEALTH_MONITOR_LIST_NODE, List)

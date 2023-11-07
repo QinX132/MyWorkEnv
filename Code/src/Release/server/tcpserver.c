@@ -330,6 +330,7 @@ _Server_Init(
     // tpool init args
     initParam.TPoolArg->ThreadPoolSize = 5;
     initParam.TPoolArg->Timeout = 5;
+    initParam.TPoolArg->TaskListMaxLength = 1024;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {

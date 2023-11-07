@@ -12,12 +12,31 @@ typedef struct _MY_CMDLINE_CONT
 }
 MY_CMDLINE_CONT;
 
-static MY_CMDLINE_ROLE sg_CmdLineRole = MY_CMDLINE_ROLE_UNUSED;
-static pthread_t *sg_CmdLineWorker = NULL;
-static ExitHandle sg_ExitHandle = NULL;
-static BOOL sg_CmdLineShouldExit = TRUE;
-static int sg_CmdExecCnt = 0;
-static int sg_CmdConnectCnt = 0;
+typedef struct _MY_CMNLINE_WORKER_STATS
+{
+    int ExecCnt;
+    int ConnectCnt;
+}
+MY_CMNLINE_WORKER_STATS;
+
+typedef struct _MY_CMNLINE_WORKER
+{
+    MY_CMDLINE_ROLE Role;
+    pthread_t *Thread;
+    ExitHandle ExitCb;
+    BOOL Exit;
+    MY_CMNLINE_WORKER_STATS Stat;
+}
+MY_CMNLINE_WORKER;
+
+
+static MY_CMNLINE_WORKER sg_CmdLineWorker = {
+        .Role = MY_CMDLINE_ROLE_UNUSED, 
+        .Thread = NULL,
+        .ExitCb = NULL,
+        .Exit = TRUE,
+        .Stat = { .ExecCnt = 0, .ConnectCnt = 0}
+    };
 
 #define MY_CMDLINE_ARG_LIST                 \
         __MY_CMDLINE_ARG("start", "start this program")  \
@@ -25,6 +44,7 @@ static int sg_CmdConnectCnt = 0;
         __MY_CMDLINE_ARG("stop", "stop this program")  \
         __MY_CMDLINE_ARG("help", "show this page")  \
         __MY_CMDLINE_ARG("changeTPoolTimeout", "<Timout> (second)")  \
+        __MY_CMDLINE_ARG("changeTPoolMaxQueueLength", "<legnth>")  \
         __MY_CMDLINE_ARG("changeLogLevel", "<Level> (0-info 1-debug 2-warn 3-error)")
 
 static const MY_CMDLINE_CONT sg_CmdLineCont[MY_CMD_TYPE_UNUSED] = 
@@ -45,7 +65,7 @@ _CmdLineUsage(
     printf("%10s Usage:\n\n", RoleName ? RoleName : "CmdLine");
 #undef __MY_CMDLINE_ARG
 #define __MY_CMDLINE_ARG(_opt_,_help_) \
-    printf("%20s: [%-30s]\n", _opt_, _help_);
+    printf("%30s: [%-30s]\n", _opt_, _help_);
     MY_CMDLINE_ARG_LIST
 #undef __MY_CMDLINE_ARG
     printf("\n--------------------------------------------------------------------------\n");
@@ -140,8 +160,8 @@ _CmdServerHandleMsg(
     int ret = 0;
     int len = 0;
     char retString[MY_BUFF_128] = {0};
-    
-    sg_CmdExecCnt ++;
+
+    MY_UATOMIC_INC(&sg_CmdLineWorker.Stat.ExecCnt);
     
     if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt))
     {
@@ -151,9 +171,9 @@ _CmdServerHandleMsg(
             ret = MY_EIO;
             LogErr("Send CmdLine reply failed!");
         }
-        if (sg_ExitHandle)
+        if (sg_CmdLineWorker.ExitCb)
         {
-            sg_ExitHandle();
+            sg_CmdLineWorker.ExitCb();
         }
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_SHOWSTAT].Opt))
@@ -200,6 +220,18 @@ _CmdServerHandleMsg(
         }
         TPoolSetTimeout(timeout);
     }
+    else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_TPOOL_QUEUE_LENGTH].Opt))
+    {
+        int32_t queueLength = (int32_t)atoi(strchr(Buff, ' '));
+        sprintf(retString, "Set tpool queue length as %u.", queueLength);
+        len = send(Fd, retString, strlen(retString) + 1, 0);
+        if (len <= 0)
+        {
+            ret = MY_EIO;
+            LogErr("Send CmdLine reply failed!");
+        }
+        TPoolSetMaxQueueLength(queueLength);
+    }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_LOG_LEVEL].Opt))
     {
         uint32_t logLevel = (uint32_t)atoi(strchr(Buff, ' '));
@@ -214,7 +246,7 @@ _CmdServerHandleMsg(
     }
     else
     {
-        sg_CmdExecCnt --;
+        MY_UATOMIC_DEC(&sg_CmdLineWorker.Stat.ExecCnt);
         ret = MY_ENOSYS;
     }
     LogDbg("%d:%s", ret, My_StrErr(ret));
@@ -247,7 +279,7 @@ _CmdServer_WorkerFunc(
 
     UNUSED(arg);
     /* recv */
-    while (!sg_CmdLineShouldExit)
+    while (!sg_CmdLineWorker.Exit)
     {
         event_count = epoll_wait(epollFd, waitEvents, MY_BUFF_128, 100); //timeout 0.1s
         if (event_count == -1)
@@ -266,7 +298,7 @@ _CmdServer_WorkerFunc(
                 int tmpClientFd = -1;
                 struct sockaddr tmpClientaddr;
                 socklen_t tmpClientLen;
-                sg_CmdConnectCnt ++;
+                MY_UATOMIC_INC(&sg_CmdLineWorker.Stat.ConnectCnt);
                 tmpClientFd = accept(serverFd, &tmpClientaddr, &tmpClientLen);
                 if (tmpClientFd != -1)
                 {
@@ -431,12 +463,13 @@ CmdLineModuleInit(
     int isRunning = 0;
     char cmd[MY_BUFF_64] = {0};
     
-    if (!InitArg || (InitArg->Argc != 2 && InitArg->Argc != 3) || !InitArg->Argv || !InitArg->RoleName || !InitArg->ExitFunc)
+    if (!InitArg || (InitArg->Argc != 2 && InitArg->Argc != 3) || 
+        !InitArg->Argv || !InitArg->RoleName || !InitArg->ExitFunc)
     {
         goto CommonErr;
     }
 
-    sg_ExitHandle = InitArg->ExitFunc;
+    sg_CmdLineWorker.ExitCb = InitArg->ExitFunc;
     sprintf(path, "/tmp/%s.pid", InitArg->RoleName);
     pidFd = MyUtil_OpenPidFile(path);
     if (pidFd < 0)
@@ -450,14 +483,14 @@ CmdLineModuleInit(
         ret = MY_EIO;
         goto CommonReturn;
     }
-    sg_CmdLineRole = isRunning ? MY_CMDLINE_ROLE_CLT : MY_CMDLINE_ROLE_SVR;
+    sg_CmdLineWorker.Role = isRunning ? MY_CMDLINE_ROLE_CLT : MY_CMDLINE_ROLE_SVR;
     
     if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_HELP].Opt) == 0)
     {
         goto CommonErr;
     }
     else if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_START].Opt) != 0 && 
-            MY_CMDLINE_ROLE_SVR == sg_CmdLineRole)
+            MY_CMDLINE_ROLE_SVR == sg_CmdLineWorker.Role)
     {
         if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt) == 0)
         {
@@ -466,7 +499,7 @@ CmdLineModuleInit(
         goto CommonErr;
     }
 
-    switch (sg_CmdLineRole)
+    switch (sg_CmdLineWorker.Role)
     {
         case MY_CMDLINE_ROLE_SVR:
             MyUtil_MakeDaemon();
@@ -477,15 +510,15 @@ CmdLineModuleInit(
             }
             MyUtil_CloseStdFds();
             /* start worker pthread */
-            sg_CmdLineWorker = (pthread_t*)MyCalloc(sizeof(pthread_t));
-            if (!sg_CmdLineWorker)
+            sg_CmdLineWorker.Thread = (pthread_t*)MyCalloc(sizeof(pthread_t));
+            if (!sg_CmdLineWorker.Thread)
             {
                 ret = MY_ENOMEM;
                 LogErr("Apply memory failed!");
                 goto CommonReturn;
             }
-            sg_CmdLineShouldExit = FALSE;
-            ret = pthread_create(sg_CmdLineWorker, NULL, _CmdServer_WorkerFunc, NULL);
+            sg_CmdLineWorker.Exit = FALSE;
+            ret = pthread_create(sg_CmdLineWorker.Thread, NULL, _CmdServer_WorkerFunc, NULL);
             if (ret) 
             {
                 LogErr("Failed to create thread");
@@ -506,7 +539,7 @@ CmdLineModuleInit(
             goto CommonReturn;
         default:
             ret = EINVAL;
-            LogErr("Role %d invalid!", sg_CmdLineRole);
+            LogErr("Role %d invalid!", sg_CmdLineWorker.Role);
             break;
     }
     goto CommonReturn;
@@ -523,9 +556,15 @@ CmdLineModuleExit(
     void
     )
 {
-    sg_CmdLineShouldExit = TRUE;
-    pthread_join(*sg_CmdLineWorker, NULL);
-    MyFree(sg_CmdLineWorker);
+    if (!sg_CmdLineWorker.Exit)
+    {
+        sg_CmdLineWorker.Exit = TRUE;
+        if (sg_CmdLineWorker.Thread)
+        {
+            pthread_join(*sg_CmdLineWorker.Thread, NULL);
+            MyFree(sg_CmdLineWorker.Thread);
+        }
+    }
 }
 
 int
@@ -538,8 +577,8 @@ CmdLineModuleCollectStat(
     int ret = MY_SUCCESS;
 
     *Offset += snprintf(Buff + *Offset , BuffMaxLen - *Offset, 
-            "<%s: [IsRunning:%s CmdConnectCnt:%d CmdExecCnt:%d]>", ModuleNameByEnum(MY_MODULES_ENUM_CMDLINE), 
-                sg_CmdLineShouldExit ? "FALSE" : "TRUE", sg_CmdConnectCnt, sg_CmdExecCnt); 
+            "<%s:[IsRunning:%s CmdConnectCnt:%d CmdExecCnt:%d]>", ModuleNameByEnum(MY_MODULES_ENUM_CMDLINE), 
+                sg_CmdLineWorker.Exit ? "FALSE" : "TRUE", sg_CmdLineWorker.Stat.ConnectCnt, sg_CmdLineWorker.Stat.ExecCnt); 
     return ret;
 }
 
