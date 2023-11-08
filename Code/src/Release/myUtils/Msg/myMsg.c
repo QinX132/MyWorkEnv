@@ -16,31 +16,61 @@ typedef struct _MY_MSG_STATS
 MY_MSG_STATS;
 
 static MY_MSG_STATS sg_MsgStats = {.Inited = FALSE};
+static int32_t sg_MsgModId = MY_MEM_MODULE_INVALID_ID;
 
-void
+static void*
+_MsgCalloc(
+    size_t Size
+    )
+{
+    return MemCalloc(sg_MsgModId, Size);
+}
+
+static void
+_MsgFree(
+    void* Ptr
+    )
+{
+    return MemFree(sg_MsgModId, Ptr);
+}
+
+int
 MsgModuleInit(
     void
     )
 {
+    int ret = MY_SUCCESS;
     if (! sg_MsgStats.Inited)
     {
+        ret = MemRegister(&sg_MsgModId, "Msg");
+        if (ret)
+        {
+            goto CommonReturn;
+        }
         memset(&sg_MsgStats, 0, sizeof(sg_MsgStats));
         pthread_spin_init(&sg_MsgStats.Lock, PTHREAD_PROCESS_PRIVATE);
         sg_MsgStats.Inited = TRUE;
     }
+CommonReturn:
+    return ret;
 }
 
-void
+int
 MsgModuleExit(
     void
     )
 {
+    int ret = MY_SUCCESS;
+    
     if (sg_MsgStats.Inited)
     {
+        ret = MemUnRegister(&sg_MsgModId);
         pthread_spin_lock(&sg_MsgStats.Lock);
         pthread_spin_unlock(&sg_MsgStats.Lock);
         pthread_spin_destroy(&sg_MsgStats.Lock);
     }
+
+    return ret;
 }
 
 int
@@ -82,7 +112,7 @@ RecvMsg(
     int recvLen = 0;
     int currentLen = 0;
     int recvRet = 0;
-    char recvLogBuff[MY_BUFF_1024] = {0};
+    char recvLogBuff[MY_MSG_CONTENT_MAX_LEN + MY_BUFF_1024] = {0};
     size_t recvLogLen = 0;
     size_t len = 0;
 
@@ -256,7 +286,7 @@ NewMsg(
         goto CommonReturn;
     }
     
-    retMsg = (MY_MSG*)MyCalloc(sizeof(MY_MSG));
+    retMsg = (MY_MSG*)_MsgCalloc(sizeof(MY_MSG));
 
 CommonReturn:
     return retMsg;
@@ -269,7 +299,7 @@ FreeMsg(
 {
     if (Msg)
     {
-        MyFree(Msg);
+        _MsgFree(Msg);
         Msg = NULL;
     }
 }
@@ -284,7 +314,7 @@ SendMsg(
     int sendLen = 0;
     int currentLen = 0;
     int sendRet = 0;
-    char recvLogBuff[MY_BUFF_1024] = {0};
+    char recvLogBuff[MY_MSG_CONTENT_MAX_LEN + MY_BUFF_1024] = {0};
     size_t recvLogLen = 0;
     size_t len = 0;
     

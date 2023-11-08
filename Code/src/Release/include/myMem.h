@@ -1,12 +1,13 @@
 #ifndef _MY_MEM_H_
 #define _MY_MEM_H_
 
-#include "myModuleCommon.h"
 #include "include.h"
 
 #ifdef __cplusplus
 extern "C"{
 #endif
+
+#define MY_MEM_MODULE_INVALID_ID                                -1
 
 /*  After the initialization process, you can utilize the "register" and "unregister" functions to 
  *  manage separate memids independently. Later, you can use "MemCalloc" and "MemFree" functions 
@@ -19,7 +20,7 @@ MemModuleInit(
     void
     );
 
-void
+int
 MemModuleExit(
     void
     );
@@ -37,9 +38,9 @@ MemRegister(
     char *Name
     );
 
-void
+int
 MemUnRegister(
-    int MemId
+    int* MemId
     );
 
 

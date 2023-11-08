@@ -111,7 +111,7 @@ LogPrint(
     char timestamp[24] = {0};
     strftime(timestamp, sizeof(timestamp), "%Y/%m/%d_%H:%M:%S", tm_info);
     int milliseconds = tv.tv_usec / 1000;
-    fprintf(sg_LogWorker.Fp, "[%s.%03d][%s][%s-%d]%s:", timestamp, milliseconds, sg_LogLevelStr[level], Function, Line, sg_LogWorker.RoleName);
+    fprintf(sg_LogWorker.Fp, "[%s.%03d]<%s:%s>[%s-%d]:", timestamp, milliseconds, sg_LogWorker.RoleName, sg_LogLevelStr[level], Function, Line);
     vfprintf(sg_LogWorker.Fp, Fmt, args);
     va_end(args);
     fprintf(sg_LogWorker.Fp, "\n");

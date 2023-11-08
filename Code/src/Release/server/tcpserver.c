@@ -9,9 +9,13 @@
 #define MY_SERVER_ROLE_NAME                                 "tcpserver"
 #define MY_SERVER_CONF_ROOT                                 MY_SERVER_ROLE_NAME".conf"
 
-typedef struct {
+#define MY_SERVER_COMM_REPLY                                "success"
+
+typedef struct _SERVER_CONF_PARAM
+{
     MY_LOG_LEVEL LogLevel;
     char LogFilePath[MY_BUFF_64];
+    MY_HEALTH_MODULE_INIT_ARG HealthArg;
 }
 SERVER_CONF_PARAM;
 
@@ -89,10 +93,10 @@ _Server_HandleMsg(
 
     gettimeofday(&tv, NULL);
     replyMsg->Head.MsgId = sg_MsgId ++;
-    replyMsg->Head.MsgContentLen = sizeof("reply");
+    replyMsg->Head.MsgContentLen = sizeof(MY_SERVER_COMM_REPLY);
     replyMsg->Head.MagicVer = Msg.Head.MagicVer;
     replyMsg->Head.SessionId = Msg.Head.SessionId;
-    memcpy(replyMsg->Cont.VarLenCont, "reply", sizeof("reply"));
+    memcpy(replyMsg->Cont.VarLenCont, MY_SERVER_COMM_REPLY, replyMsg->Head.MsgContentLen);
     replyMsg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
 
     ret = SendMsg(Fd, *replyMsg);
@@ -258,6 +262,76 @@ _Server_ParseConf(
                 ServerConf->LogFilePath[len - 1] = '\0';
             }
         }
+        else if ((ptr = strstr(line, "LogHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.LogHealthIntervalS = atoi(ptr + strlen("LogHealthIntervalS="));
+            if (ServerConf->HealthArg.LogHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid LogHealthIntervalS %d!", ServerConf->HealthArg.LogHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "MsgHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.MsgHealthIntervalS = atoi(ptr + strlen("MsgHealthIntervalS="));
+            if (ServerConf->HealthArg.MsgHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid MsgHealthIntervalS %d!", ServerConf->HealthArg.MsgHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "TPoolHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.TPoolHealthIntervalS = atoi(ptr + strlen("TPoolHealthIntervalS="));
+            if (ServerConf->HealthArg.TPoolHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid TPoolHealthIntervalS %d!", ServerConf->HealthArg.TPoolHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "CmdLineHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.CmdLineHealthIntervalS = atoi(ptr + strlen("CmdLineHealthIntervalS="));
+            if (ServerConf->HealthArg.CmdLineHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid CmdLineHealthIntervalS %d!", ServerConf->HealthArg.CmdLineHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "MHHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.MHHealthIntervalS = atoi(ptr + strlen("MHHealthIntervalS="));
+            if (ServerConf->HealthArg.MHHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid MHHealthIntervalS %d!", ServerConf->HealthArg.MHHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "MemHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.MemHealthIntervalS = atoi(ptr + strlen("MemHealthIntervalS="));
+            if (ServerConf->HealthArg.MemHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid MemHealthIntervalS %d!", ServerConf->HealthArg.MemHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "TimerHealthIntervalS=")) != NULL)
+        {
+            ServerConf->HealthArg.TimerHealthIntervalS = atoi(ptr + strlen("TimerHealthIntervalS="));
+            if (ServerConf->HealthArg.TimerHealthIntervalS < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid TimerHealthIntervalS %d!", ServerConf->HealthArg.TimerHealthIntervalS);
+                goto CommonReturn;
+            }
+        }
         memset(line, 0, sizeof(line));
     }
 
@@ -307,17 +381,19 @@ _Server_Init(
         goto CommonReturn;
     }
 
-    initParam.InitHealthModule = TRUE;
+    initParam.HealthArg = (MY_HEALTH_MODULE_INIT_ARG*)calloc(sizeof(MY_HEALTH_MODULE_INIT_ARG), 1);
     initParam.InitMsgModule = TRUE;
     initParam.InitTimerModule = TRUE;
     initParam.CmdLineArg = (MY_CMDLINE_MODULE_INIT_ARG*)calloc(sizeof(MY_CMDLINE_MODULE_INIT_ARG), 1);
     initParam.LogArg = (MY_LOG_MODULE_INIT_ARG*)calloc(sizeof(MY_LOG_MODULE_INIT_ARG), 1);
     initParam.TPoolArg = (MY_TPOOL_MODULE_INIT_ARG*)calloc(sizeof(MY_TPOOL_MODULE_INIT_ARG), 1);
-    if (!initParam.CmdLineArg || !initParam.LogArg || !initParam.TPoolArg)
+    if (!initParam.HealthArg || !initParam.CmdLineArg || !initParam.LogArg || !initParam.TPoolArg)
     {
         LogErr("Apply mem failed!");
         goto CommonReturn;
     }
+    // health init args
+    initParam.HealthArg = &serverConf.HealthArg;
     // cmd line init args
     initParam.CmdLineArg->Argc = argc;
     initParam.CmdLineArg->Argv = argv;

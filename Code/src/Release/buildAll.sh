@@ -4,6 +4,11 @@ pushd myUtils > /dev/null
 if [ $# -eq 0 ] || { [ $# -gt 0 ] && [ "$1" != "q" ]; }; then
     echo "####################### Utils test #########################"
     make DEBUG=true -B
+    ret=$?
+    if [ "$ret" != "0" ]; then
+        exit -1
+    fi
+    echo
     make test
     ret=$?
     if [ "$ret" != "0" ]; then

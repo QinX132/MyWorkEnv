@@ -1,9 +1,9 @@
 #include "myModuleHealth.h"
 #include "myList.h"
 
-#define MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL                          30 //s
+#define MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL                          300 //s
 
-const MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX] = 
+MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX] = 
 {
     [MY_MODULES_ENUM_LOG]       =   {LogModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
     [MY_MODULES_ENUM_MSG]       =   {MsgModuleCollectStat, MY_MODULE_HEALTH_DEFAULT_TIME_INTERVAL},
@@ -35,6 +35,23 @@ typedef struct _MY_HEALTH_MONITOR
 MY_HEALTH_MONITOR;
 
 static MY_HEALTH_MONITOR sg_HealthWorker = {.IsRunning = FALSE};
+static int32_t sg_HealthModId = MY_MEM_MODULE_INVALID_ID;
+
+static void*
+_HealthCalloc(
+    size_t Size
+    )
+{
+    return MemCalloc(sg_HealthModId, Size);
+}
+
+static void
+_HealthFree(
+    void* Ptr
+    )
+{
+    return MemFree(sg_HealthModId, Ptr);
+}
 
 static
 void
@@ -128,12 +145,12 @@ _HealthModuleEntry(
     (void)event_enable_debug_logging(FALSE);
     (void)event_set_log_callback(_HealthEventLogCallBack);
     // keep alive
-    node = (MY_HEALTH_MONITOR_LIST_NODE*)MyCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
+    node = (MY_HEALTH_MONITOR_LIST_NODE*)_HealthCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
     if (!node)
     {
         goto CommonReturn;
     }
-    node->Event = (struct event*)MyCalloc(sizeof(struct event));
+    node->Event = (struct event*)_HealthCalloc(sizeof(struct event));
     if (!node->Event)
     {
         goto CommonReturn;
@@ -153,12 +170,12 @@ _HealthModuleEntry(
     {
         if (sg_ModuleReprt[loop].Cb)
         {
-            node = (MY_HEALTH_MONITOR_LIST_NODE*)MyCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
+            node = (MY_HEALTH_MONITOR_LIST_NODE*)_HealthCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
             if (!node)
             {
                 goto CommonReturn;
             }
-            node->Event = (struct event*)MyCalloc(sizeof(struct event));
+            node->Event = (struct event*)_HealthCalloc(sizeof(struct event));
             if (!node->Event)
             {
                 goto CommonReturn;
@@ -181,7 +198,7 @@ _HealthModuleEntry(
 CommonReturn:
     if (node)
     {
-        MyFree(node);
+        _HealthFree(node);
     }
     pthread_exit(NULL);
 }
@@ -197,13 +214,13 @@ HealthMonitorAdd(
     MY_HEALTH_MONITOR_LIST_NODE *node = NULL;
     struct timeval tv;
     
-    node = (MY_HEALTH_MONITOR_LIST_NODE*)MyCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
+    node = (MY_HEALTH_MONITOR_LIST_NODE*)_HealthCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
     if (!node)
     {
         ret = MY_ENOMEM;
         goto CommonReturn;
     }
-    node->Event = (struct event*)MyCalloc(sizeof(struct event));
+    node->Event = (struct event*)_HealthCalloc(sizeof(struct event));
     if (!node->Event)
     {
         ret = MY_ENOMEM;
@@ -226,16 +243,17 @@ HealthMonitorAdd(
 CommonReturn:
     if (ret && node)
     {
-        MyFree(node);
+        _HealthFree(node);
     }
     return ret;
 }
 
-void
+int
 HealthModuleExit(
     void
     )
 {
+    int ret = MY_SUCCESS;
     MY_HEALTH_MONITOR_LIST_NODE *tmp = NULL, *loop = NULL;
     
     if (sg_HealthWorker.IsRunning)
@@ -249,8 +267,8 @@ HealthModuleExit(
                 MY_LIST_DEL_NODE(&loop->List);
                 event_del(loop->Event);
                 //event_free(loop->Event);  // no need to free because we use event assign
-                MyFree(loop->Event);
-                MyFree(loop);
+                _HealthFree(loop->Event);
+                _HealthFree(loop);
                 loop = NULL;
             }
         }
@@ -260,12 +278,15 @@ HealthModuleExit(
         event_base_free(sg_HealthWorker.EventBase);
         sg_HealthWorker.EventBase = NULL;
         pthread_spin_destroy(&sg_HealthWorker.Lock);
+        ret = MemUnRegister(&sg_HealthModId);
     }
+
+    return ret;
 }
 
 int 
 HealthModuleInit(
-    void
+    MY_HEALTH_MODULE_INIT_ARG *InitArg
     )
 {
     int ret = MY_SUCCESS;
@@ -273,6 +294,30 @@ HealthModuleInit(
     if (sg_HealthWorker.IsRunning)
     {
         goto CommonReturn;
+    }
+    ret = MemRegister(&sg_HealthModId, "Health");
+    if (ret)
+    {
+        LogErr("Register mem failed!\n");
+        goto CommonReturn;
+    }
+
+    if (InitArg)
+    {
+        sg_ModuleReprt[MY_MODULES_ENUM_LOG].Interval = InitArg->LogHealthIntervalS > 0 ? 
+                InitArg->LogHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_LOG].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_MSG].Interval = InitArg->MsgHealthIntervalS > 0 ? 
+                InitArg->MsgHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_MSG].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_TPOOL].Interval = InitArg->TPoolHealthIntervalS > 0 ? 
+                InitArg->TPoolHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_TPOOL].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_CMDLINE].Interval = InitArg->CmdLineHealthIntervalS > 0 ? 
+                InitArg->CmdLineHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_CMDLINE].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_MHEALTH].Interval = InitArg->MHHealthIntervalS > 0 ? 
+                InitArg->MHHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_MHEALTH].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_MEM].Interval = InitArg->MemHealthIntervalS > 0 ? 
+                InitArg->MemHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_MEM].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_TIMER].Interval = InitArg->TimerHealthIntervalS > 0 ? 
+                InitArg->TimerHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_TIMER].Interval;
     }
     
     pthread_spin_init(&sg_HealthWorker.Lock, PTHREAD_PROCESS_PRIVATE);
@@ -327,5 +372,24 @@ HealthModuleCollectStat(
 CommonReturn:
     *Offset += len;
     return ret;
+}
+
+static const char* sg_ModulesName[MY_MODULES_ENUM_MAX] = 
+{
+    [MY_MODULES_ENUM_LOG]       =   "Log",
+    [MY_MODULES_ENUM_MSG]       =   "Msg",
+    [MY_MODULES_ENUM_TPOOL]     =   "TPool",
+    [MY_MODULES_ENUM_CMDLINE]   =   "CmdLine",
+    [MY_MODULES_ENUM_MHEALTH]   =   "MHealth",
+    [MY_MODULES_ENUM_MEM]       =   "Mem",
+    [MY_MODULES_ENUM_TIMER]     =   "Timer"
+};
+
+const char*
+ModuleNameByEnum(
+    int Module
+    )
+{
+    return (Module >= 0 && Module < (int)MY_MODULES_ENUM_MAX) ? sg_ModulesName[Module] : NULL;
 }
 

@@ -56,6 +56,23 @@ MY_THREAD_POOL* sg_ThreadPool = NULL;
 static MY_THREAD_POOL_STATS sg_ThreadPoolStats = {.TaskAdded = 0, .TaskSucceed = 0, .TaskFailed = 0};
 //__thread 
 BOOL sg_TPoolModuleInited = FALSE;
+static int sg_TPoolMemId = MY_MEM_MODULE_INVALID_ID;
+
+static void*
+_TPoolCalloc(
+    size_t Size
+    )
+{
+    return MemCalloc(sg_TPoolMemId, Size);
+}
+
+static void
+_TPoolFree(
+    void* Ptr
+    )
+{
+    return MemFree(sg_TPoolMemId, Ptr);
+}
 
 static void* 
 _TPoolProc(
@@ -73,7 +90,6 @@ _TPoolProc(
         hasTask = FALSE;
         pthread_mutex_lock(&threadPool->Lock);
         MY_UATOMIC_INC(&threadPool->CurrentThreadNum);
-        LogInfo("Current thread num %d", threadPool->CurrentThreadNum);
         do{
             if (threadPool->Exit)
             {
@@ -105,8 +121,8 @@ _TPoolProc(
                 {
                     pthread_mutex_destroy(loop->TaskLock);
                     pthread_cond_destroy(loop->TaskCond);
-                    MyFree(loop->TaskLock);
-                    MyFree(loop->TaskCond);
+                    _TPoolFree(loop->TaskLock);
+                    _TPoolFree(loop->TaskCond);
                 }
                 else
                 {
@@ -117,8 +133,8 @@ _TPoolProc(
                         {
                             pthread_mutex_destroy(loop->TaskLock);
                             pthread_cond_destroy(loop->TaskCond);
-                            MyFree(loop->TaskLock);
-                            MyFree(loop->TaskCond);
+                            _TPoolFree(loop->TaskLock);
+                            _TPoolFree(loop->TaskCond);
                         }
                         else
                         {
@@ -130,7 +146,7 @@ _TPoolProc(
                     MY_UATOMIC_INC(&sg_ThreadPoolStats.TaskSucceed);
                 }
                 MY_LIST_DEL_NODE(&loop->List);
-                MyFree(loop);
+                _TPoolFree(loop);
                 loop = NULL;
             }
         }
@@ -161,7 +177,15 @@ TPoolModuleInit(
         ret = MY_EINVAL;
         goto CommonReturn;
     }
-    sg_ThreadPool = (MY_THREAD_POOL*)MyCalloc(sizeof(MY_THREAD_POOL));
+
+    ret = MemRegister(&sg_TPoolMemId, "TPool");
+    if (ret)
+    {
+        LogErr("Mem register failed! ret %d", ret);
+        goto CommonReturn;
+    }
+    
+    sg_ThreadPool = (MY_THREAD_POOL*)_TPoolCalloc(sizeof(MY_THREAD_POOL));
     if (!sg_ThreadPool)
     {
         ret = MY_ENOMEM;
@@ -185,7 +209,7 @@ TPoolModuleInit(
     
     pthread_mutex_lock(&sg_ThreadPool->Lock);
     {
-        sg_ThreadPool->Threads = (pthread_t*)MyCalloc(sizeof(pthread_t) * InitArg->ThreadPoolSize);
+        sg_ThreadPool->Threads = (pthread_t*)_TPoolCalloc(sizeof(pthread_t) * InitArg->ThreadPoolSize);
         for (loop = 0; loop < InitArg->ThreadPoolSize; loop ++)
         {
             ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _TPoolProc, (void*)sg_ThreadPool);
@@ -216,12 +240,12 @@ CommonReturn:
     return ret;
 }
 
-void
+int
 TPoolModuleExit(
     void
     )
 {
-    int loop = 0;
+    int loop = 0, ret = MY_SUCCESS;
 
     if (sg_TPoolModuleInited)
     {
@@ -236,11 +260,14 @@ TPoolModuleExit(
 
         pthread_mutex_destroy(&(sg_ThreadPool->Lock));
         pthread_cond_destroy(&(sg_ThreadPool->Cond));
-        MyFree(sg_ThreadPool->Threads);
-        MyFree(sg_ThreadPool);
+        _TPoolFree(sg_ThreadPool->Threads);
+        _TPoolFree(sg_ThreadPool);
         sg_ThreadPool = NULL;
         sg_TPoolModuleInited = FALSE;
+        ret = MemUnRegister(&sg_TPoolMemId);
     }
+
+    return ret;
 }
 
 // async api, TaskArg is a in arg
@@ -272,7 +299,7 @@ TPoolAddTask(
     }
     pthread_mutex_unlock(&sg_ThreadPool->Lock);
     
-    node = (MY_TPOOL_TASK*)MyCalloc(sizeof(MY_TPOOL_TASK));
+    node = (MY_TPOOL_TASK*)_TPoolCalloc(sizeof(MY_TPOOL_TASK));
     if (!node) 
     {
         ret = MY_ENOMEM;
@@ -321,9 +348,9 @@ TPoolAddTaskAndWait(
         ret = MY_EINVAL;
         goto CommonReturn;
     }
-    taskLock = (pthread_mutex_t*)MyCalloc(sizeof(pthread_mutex_t));
-    taskCond = (pthread_cond_t*)MyCalloc(sizeof(pthread_cond_t));
-    node = (MY_TPOOL_TASK*)MyCalloc(sizeof(MY_TPOOL_TASK));
+    taskLock = (pthread_mutex_t*)_TPoolCalloc(sizeof(pthread_mutex_t));
+    taskCond = (pthread_cond_t*)_TPoolCalloc(sizeof(pthread_cond_t));
+    node = (MY_TPOOL_TASK*)_TPoolCalloc(sizeof(MY_TPOOL_TASK));
     if (!taskLock || !taskCond || !node)
     {
         ret = MY_ENOMEM;
@@ -393,8 +420,8 @@ CommonReturn:
         {
             pthread_mutex_destroy(taskLock);
             pthread_cond_destroy(taskCond);
-            MyFree(taskLock);
-            MyFree(taskCond);
+            _TPoolFree(taskLock);
+            _TPoolFree(taskCond);
         }
     }
     return ret;

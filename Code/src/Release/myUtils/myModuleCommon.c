@@ -1,30 +1,22 @@
 #include "myModuleCommon.h"
 
-static const char* sg_ModulesName[MY_MODULES_ENUM_MAX] = 
-{
-    [MY_MODULES_ENUM_LOG]       =   "Log",
-    [MY_MODULES_ENUM_MSG]       =   "Msg",
-    [MY_MODULES_ENUM_TPOOL]     =   "TPool",
-    [MY_MODULES_ENUM_CMDLINE]   =   "CmdLine",
-    [MY_MODULES_ENUM_MHEALTH]   =   "MHealth",
-    [MY_MODULES_ENUM_MEM]       =   "Mem",
-    [MY_MODULES_ENUM_TIMER]     =   "Timer"
-};
-
-const char*
-ModuleNameByEnum(
-    int Module
-    )
-{
-    return (Module >= 0 && Module < (int)MY_MODULES_ENUM_MAX) ? sg_ModulesName[Module] : NULL;
-}
-
 int
 MyModuleCommonInit(
     MY_MODULES_INIT_PARAM ModuleInitParam 
     )
 {
     int ret = 0;
+    
+    if (ModuleInitParam.LogArg)
+    {
+        ret = LogModuleInit(ModuleInitParam.LogArg);
+        if (ret)
+        {
+            LogErr("Init log failed! %d %s", ret, My_StrErr(ret));
+            goto CommonReturn;
+        }
+        LogInfo("Log start...");
+    }
     
     ret = MemModuleInit();
     if (ret)
@@ -45,24 +37,18 @@ MyModuleCommonInit(
             goto CommonReturn;
         }
     }
+    LogInfo("---------------------------------------------------------");
+    LogInfo("|-------------------%12s -----------------------|", ModuleInitParam.LogArg->RoleName);
+    LogInfo("---------------------------------------------------------");
     
-    if (ModuleInitParam.LogArg)
-    {
-        ret = LogModuleInit(ModuleInitParam.LogArg);
-        if (ret)
-        {
-            LogErr("Init log failed! %d %s", ret, My_StrErr(ret));
-            goto CommonReturn;
-        }
-        LogInfo("---------------------------------------------------------");
-        LogInfo("|-------------------%12s -----------------------|", ModuleInitParam.LogArg->RoleName);
-        LogInfo("---------------------------------------------------------");
-        LogInfo("---------------- Log Module init success ----------------");
-    }
-
     if (ModuleInitParam.InitMsgModule)
     {
-        MsgModuleInit();
+        ret = MsgModuleInit();
+        if (ret)
+        {
+            LogErr("Msg module init failed! %d %s", ret, My_StrErr(ret));
+            goto CommonReturn;
+        }
         LogInfo("---------------- Msg Module init success ----------------");
     }
 
@@ -77,9 +63,9 @@ MyModuleCommonInit(
         LogInfo("---------------- TPool Module init success ---------------");
     }
 
-    if (ModuleInitParam.InitHealthModule)
+    if (ModuleInitParam.HealthArg)
     {
-        ret = HealthModuleInit();
+        ret = HealthModuleInit(ModuleInitParam.HealthArg);
         if (ret)
         {
             LogErr("Init HealthModule failed! %d %s", ret, My_StrErr(ret));
@@ -110,20 +96,21 @@ MyModuleCommonExit(
 {
     CmdLineModuleExit();
 
-    MsgModuleExit();
+    (void)MsgModuleExit();
     LogInfo("-------------------- Msg Module exit ---------------------");
 
-    TPoolModuleExit();
+    (void)TPoolModuleExit();
     LogInfo("-------------------- TPool Module exit -------------------");
 
-    HealthModuleExit();
+    (void)HealthModuleExit();
     LogInfo("-------------------- Health Module exit ------------------");
 
-    TimerModuleExit();
+    (void)TimerModuleExit();
     LogInfo("-------------------- Timer Module exit -------------------");
 
+    (void)MemModuleExit();
+    LogInfo("-------------------- Mem Module exit -------------------");
+    
     LogInfo("----------------------------------------------------------");
     LogModuleExit();
-
-    MemModuleExit();
 }

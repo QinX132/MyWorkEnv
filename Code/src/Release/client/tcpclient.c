@@ -3,6 +3,7 @@
 #include "myLogIO.h"
 #include "myThreadPool.h"
 #include "myModuleHealth.h"
+#include "myModuleCommon.h"
 
 static uint32_t currentSessionId = 0;
 #define MY_CLIENT_ROLE_NAME                                 "tcpclient"
@@ -90,7 +91,7 @@ _Client_WorkerFunc(
     while (1)
     {
         char buf[4096] = {0};
-        printf("Send:");
+        printf(">>>> InputCmd: ");
         scanf("%s", buf);
         uint32_t stringLen = strlen(buf) + 1;
         if (strcasecmp(buf, MY_DISCONNECT_STRING) == 0)
@@ -121,7 +122,7 @@ _Client_WorkerFunc(
         
         MY_MSG msg;
         (void)RecvMsg(clientFd, &msg);
-        printf("\t Recv:%s\n", (char*)msg.Cont.VarLenCont);
+        printf("<<<< RetReply: %s\n", (char*)msg.Cont.VarLenCont);
 
         FreeMsg(msgToSend);
         msgToSend = NULL;
@@ -229,7 +230,7 @@ _Client_Init(
         goto CommonReturn;
     }
 
-    initParam.InitHealthModule = TRUE;
+    initParam.HealthArg = NULL;
     initParam.InitMsgModule = TRUE;
     initParam.InitTimerModule = TRUE;
     initParam.CmdLineArg = NULL;

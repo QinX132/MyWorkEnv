@@ -3,6 +3,7 @@
 
 #include "include.h"
 #include "myList.h"
+#include "myModuleHealth.h"
 
 #ifdef __cplusplus
 extern "C"{
@@ -31,7 +32,7 @@ MY_TIMER_EVENT_NODE;
 
 typedef MY_TIMER_EVENT_NODE* TIMER_HANDLE;
 
-void
+int
 TimerModuleExit(
     void
     );

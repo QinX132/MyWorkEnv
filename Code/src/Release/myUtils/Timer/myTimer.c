@@ -14,6 +14,23 @@ typedef struct _MY_TIMER_WORKER
 MY_TIMER_WORKER;
 
 static MY_TIMER_WORKER sg_TimerWorker = {.IsRunning = FALSE};
+static int sg_TimerMemId = MY_MEM_MODULE_INVALID_ID;
+
+static void*
+_TimerCalloc(
+    size_t Size
+    )
+{
+    return MemCalloc(sg_TimerMemId, Size);
+}
+
+static void
+_TimerFree(
+    void* Ptr
+    )
+{
+    return MemFree(sg_TimerMemId, Ptr);
+}
 
 #define MY_TIMER_KEEPALIVE_INTERVAL                             1 // s
 void
@@ -84,12 +101,12 @@ _TimerModuleEntry(
     (void)event_enable_debug_logging(FALSE);
     (void)event_set_log_callback(_TimerEventLogCallBack);
     // keep alive
-    node = (MY_TIMER_EVENT_NODE*)MyCalloc(sizeof(MY_TIMER_EVENT_NODE));
+    node = (MY_TIMER_EVENT_NODE*)_TimerCalloc(sizeof(MY_TIMER_EVENT_NODE));
     if (!node)
     {
         goto CommonReturn;
     }
-    node->Event = (struct event*)MyCalloc(sizeof(struct event));
+    node->Event = (struct event*)_TimerCalloc(sizeof(struct event));
     if (!node->Event)
     {
         goto CommonReturn;
@@ -113,16 +130,17 @@ _TimerModuleEntry(
 CommonReturn:
     if (node)
     {
-        MyFree(node);
+        _TimerFree(node);
     }
     pthread_exit(NULL);
 }
 
-void
+int
 TimerModuleExit(
     void
     )
 {
+    int ret = MY_SUCCESS;
     MY_TIMER_EVENT_NODE *tmp = NULL, *loop = NULL;
     
     if (sg_TimerWorker.IsRunning)
@@ -136,8 +154,8 @@ TimerModuleExit(
                 MY_LIST_DEL_NODE(&loop->List);
                 event_del(loop->Event);
                 //event_free(loop->Event);  // no need to free because we use event assign
-                MyFree(loop->Event);
-                MyFree(loop);
+                _TimerFree(loop->Event);
+                _TimerFree(loop);
                 loop = NULL;
             }
         }
@@ -147,7 +165,10 @@ TimerModuleExit(
         event_base_free(sg_TimerWorker.EventBase);
         sg_TimerWorker.EventBase = NULL;
         pthread_mutex_destroy(&sg_TimerWorker.Lock);
+        ret = MemUnRegister(&sg_TimerMemId);
     }
+
+    return ret;
 }
 
 int 
@@ -162,12 +183,19 @@ TimerModuleInit(
         goto CommonReturn;
     }
 
+    ret = MemRegister(&sg_TimerMemId, "Timer");
+    if (ret)
+    {
+        goto CommonReturn;
+    }
+
     pthread_mutex_init(&sg_TimerWorker.Lock, NULL);
     MY_LIST_NODE_INIT(&sg_TimerWorker.EventList);
     sg_TimerWorker.EventListLen = 0;
     ret = pthread_create(&sg_TimerWorker.ThreadId, NULL, _TimerModuleEntry, NULL);
     if (ret)
     {
+        LogErr("Create thread ret %d:%s", ret , My_StrErr(ret));
         goto CommonReturn;
     }
 
@@ -206,12 +234,12 @@ TimerAdd(
     tv.tv_usec = (IntervalMs % 1000) * 1000;
     if (TimerType == MY_TIMER_TYPE_LOOP)
     {
-        node = (MY_TIMER_EVENT_NODE*)MyCalloc(sizeof(MY_TIMER_EVENT_NODE));
+        node = (MY_TIMER_EVENT_NODE*)_TimerCalloc(sizeof(MY_TIMER_EVENT_NODE));
         if (!node)
         {
             goto CommonReturn;
         }
-        node->Event = (struct event*)MyCalloc(sizeof(struct event));
+        node->Event = (struct event*)_TimerCalloc(sizeof(struct event));
         if (!node->Event)
         {
             goto CommonReturn;
@@ -235,7 +263,7 @@ TimerAdd(
 CommonReturn:
     if (ret && node)
     {
-        MyFree(node);
+        _TimerFree(node);
     }
     return ret;
 }
@@ -251,8 +279,8 @@ TimerDel(
         MY_LIST_DEL_NODE(&(*TimerHandle)->List);
         sg_TimerWorker.EventListLen --;
         event_del((*TimerHandle)->Event);
-        MyFree((*TimerHandle)->Event);
-        MyFree((*TimerHandle));
+        _TimerFree((*TimerHandle)->Event);
+        _TimerFree((*TimerHandle));
         pthread_mutex_unlock(&sg_TimerWorker.Lock);
         (*TimerHandle) = NULL;
     }

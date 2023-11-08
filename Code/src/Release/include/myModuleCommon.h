@@ -17,16 +17,11 @@ typedef struct _MY_MODULES_INIT_PARAM
     MY_CMDLINE_MODULE_INIT_ARG *CmdLineArg;
     MY_LOG_MODULE_INIT_ARG *LogArg;
     BOOL InitMsgModule;
-    BOOL InitHealthModule;
+    MY_HEALTH_MODULE_INIT_ARG *HealthArg;
     MY_TPOOL_MODULE_INIT_ARG *TPoolArg;
     BOOL InitTimerModule;
 }
 MY_MODULES_INIT_PARAM;
-
-const char*
-ModuleNameByEnum(
-    int Module
-    );
 
 int
 MyModuleCommonInit(

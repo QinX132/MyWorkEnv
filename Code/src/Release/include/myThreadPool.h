@@ -20,7 +20,7 @@ TPoolModuleInit(
     MY_TPOOL_MODULE_INIT_ARG *InitArg
     );
 
-void
+int
 TPoolModuleExit(
     void
     );

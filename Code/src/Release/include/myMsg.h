@@ -1,7 +1,6 @@
 #ifndef _MY_MSG_H_
 #define _MY_MSG_H_
 #include "include.h"
-#include "myModuleCommon.h"
 
 #ifdef __cplusplus
 extern "C"{
@@ -55,12 +54,12 @@ typedef struct _MY_MSG
 }
 MY_MSG;
 
-void
+int
 MsgModuleInit(
     void
     );
 
-void
+int
 MsgModuleExit(
     void
     );

@@ -7,6 +7,7 @@
 #include "myThreadPool.h"
 #include "myMem.h"
 #include "myTimer.h"
+#include "myCmdLine.h"
 
 #ifdef __cplusplus
 extern "C"{
@@ -30,23 +31,35 @@ MY_MODULES_ENUM;
 
 typedef int (*StatReportCB)(char*, int, int*);
 
-typedef struct
+typedef struct _MODULE_HEALTH_REPORT_REGISTER
 {
     StatReportCB Cb;
     int Interval;
 }
 MODULE_HEALTH_REPORT_REGISTER;
 
-extern const MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX];
+typedef struct _MY_HEALTH_MODULE_INIT_ARG
+{
+    int LogHealthIntervalS;
+    int MsgHealthIntervalS;
+    int TPoolHealthIntervalS;
+    int CmdLineHealthIntervalS;
+    int MHHealthIntervalS;
+    int MemHealthIntervalS;
+    int TimerHealthIntervalS;
+}
+MY_HEALTH_MODULE_INIT_ARG;
 
-void
+extern MODULE_HEALTH_REPORT_REGISTER sg_ModuleReprt[MY_MODULES_ENUM_MAX];
+
+int
 HealthModuleExit(
     void
     );
 
 int 
 HealthModuleInit(
-    void
+    MY_HEALTH_MODULE_INIT_ARG *InitArg
     );
 
 int
@@ -61,6 +74,11 @@ HealthModuleCollectStat(
     char* Buff,
     int BuffMaxLen,
     int* Offset
+    );
+ 
+const char*
+ModuleNameByEnum(
+    int Module
     );
 
 #ifdef __cplusplus
