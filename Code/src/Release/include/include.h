@@ -58,6 +58,9 @@
 #define MY_BUFF_256                                 256
 #define MY_BUFF_512                                 512
 #define MY_BUFF_1024                                1024
+#define MY_BUFF_2048                                2048
+#define MY_BUFF_4096                                4096
+#define MY_BUFF_8192                                8192
 
 #define MY_TCP_SERVER_PORT                          15000
 #define MY_MAX_CLIENT_NUM_PER_SERVER                128

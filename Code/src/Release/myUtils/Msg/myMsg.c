@@ -105,7 +105,7 @@ CommonReturn:
 int
 RecvMsg(
     int Fd,
-    __inout MY_MSG * RetMsg
+    __inout MY_MSG *RetMsg
     )
 {
     int ret = 0;
@@ -307,7 +307,7 @@ FreeMsg(
 int
 SendMsg(
     int Fd,
-    MY_MSG Msg
+    MY_MSG *Msg
     )
 {
     int ret = 0;
@@ -318,7 +318,7 @@ SendMsg(
     size_t recvLogLen = 0;
     size_t len = 0;
     
-    if (!sg_MsgStats.Inited)
+    if (!sg_MsgStats.Inited || !Msg)
     {
         goto CommonReturn;
     }
@@ -327,7 +327,7 @@ SendMsg(
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
-        sendRet = send(Fd, ((char*)&Msg.Head) + currentLen, sendLen - currentLen, 0);
+        sendRet = send(Fd, ((char*)&Msg->Head) + currentLen, sendLen - currentLen, 0);
         if (sendRet > 0)
         {
             currentLen += sendRet;
@@ -345,7 +345,7 @@ SendMsg(
     }
     len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
                 "Send Msg: MsgId=%llu MsgContentLen=%u MagicVer=%u, SessionId=%u ", 
-                Msg.Head.MsgId, Msg.Head.MsgContentLen, Msg.Head.MagicVer, Msg.Head.SessionId);
+                Msg->Head.MsgId, Msg->Head.MsgContentLen, Msg->Head.MagicVer, Msg->Head.SessionId);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
         ret = MY_ENOBUFS;
@@ -354,11 +354,11 @@ SendMsg(
     }
     recvLogLen += len;
     // send msg content
-    sendLen = Msg.Head.MsgContentLen;
+    sendLen = Msg->Head.MsgContentLen;
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
-        sendRet = send(Fd, ((char*)&Msg.Head + sizeof(MY_MSG_HEAD)) + currentLen, sendLen - currentLen, 0);
+        sendRet = send(Fd, ((char*)&Msg->Head + sizeof(MY_MSG_HEAD)) + currentLen, sendLen - currentLen, 0);
         if (sendRet > 0)
         {
             currentLen += sendRet;
@@ -375,7 +375,7 @@ SendMsg(
         }
     }
     len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "VarLenCont=\"%s\" ", Msg.Cont.VarLenCont);
+                "VarLenCont=\"%s\" ", Msg->Cont.VarLenCont);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
         ret = MY_ENOBUFS;
@@ -388,7 +388,7 @@ SendMsg(
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
-        sendRet = send(Fd, ((char*)&Msg.Head + sizeof(MY_MSG_HEAD) + sizeof(MY_MSG_CONT)) + currentLen, sendLen - currentLen, 0);
+        sendRet = send(Fd, ((char*)&Msg->Head + sizeof(MY_MSG_HEAD) + sizeof(MY_MSG_CONT)) + currentLen, sendLen - currentLen, 0);
         if (sendRet > 0)
         {
             currentLen += sendRet;
@@ -405,7 +405,7 @@ SendMsg(
         }
     }
     len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "TimeStamp=%llu", Msg.Tail.TimeStamp);
+                "TimeStamp=%llu", Msg->Tail.TimeStamp);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
         ret = MY_ENOBUFS;
@@ -427,7 +427,7 @@ CommonReturn:
         else
         {
             sg_MsgStats.MsgSend ++;
-            sg_MsgStats.MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg.Head.MsgContentLen + sizeof(MY_MSG_TAIL);
+            sg_MsgStats.MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg->Head.MsgContentLen + sizeof(MY_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgStats.Lock);
     }

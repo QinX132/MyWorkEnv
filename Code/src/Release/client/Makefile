@@ -20,7 +20,7 @@ LDFLAGS +=  -pthread
 TARGET = tcpclient
 all: $(TARGET)
 
-tcpclient: $(OBJ_FILE)
+$(TARGET): $(OBJ_FILE)
 	$(CC) $(OBJ_FILE) $(LDFLAGS) -o $@
 
 %.o: %.c

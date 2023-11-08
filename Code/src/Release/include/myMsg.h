@@ -74,7 +74,7 @@ MsgModuleCollectStat(
 int
 RecvMsg(
     int Fd,
-    __inout MY_MSG * RetMsg
+    __inout MY_MSG *RetMsg
     );
 
 MUST_CHECK
@@ -91,7 +91,7 @@ FreeMsg(
 int
 SendMsg(
     int Fd,
-    MY_MSG Msg
+    MY_MSG *Msg
     );
 
 #ifdef __cplusplus

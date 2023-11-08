@@ -25,7 +25,7 @@ pthread_t *sg_ServerMsgHandler = NULL;
 static BOOL sg_ServerMsgHandlerShouldExit = FALSE;
 
 static int
-_Server_CreateFd(
+_ServerCreateFd(
     void
     )
 {
@@ -71,7 +71,7 @@ CommonReturn:
 
 static
 int 
-_Server_HandleMsg(
+_ServerHandleMsg(
     int Fd,
     MY_MSG Msg
     )
@@ -82,24 +82,25 @@ _Server_HandleMsg(
 
     if (!replyMsg)
     {
-        ret = -1;
+        ret = MY_ENOMEM;
         goto CommonReturn;
     }
     if (strcasecmp((char*)Msg.Cont.VarLenCont, MY_DISCONNECT_STRING) == 0)
     {
-        ret = -1;
+        ret = MY_ENOMEM;
         goto CommonReturn;
     }
 
     gettimeofday(&tv, NULL);
     replyMsg->Head.MsgId = sg_MsgId ++;
-    replyMsg->Head.MsgContentLen = sizeof(MY_SERVER_COMM_REPLY);
     replyMsg->Head.MagicVer = Msg.Head.MagicVer;
     replyMsg->Head.SessionId = Msg.Head.SessionId;
-    memcpy(replyMsg->Cont.VarLenCont, MY_SERVER_COMM_REPLY, replyMsg->Head.MsgContentLen);
+    replyMsg->Head.MsgContentLen = (uint32_t)
+        snprintf((char*)replyMsg->Cont.VarLenCont, sizeof(replyMsg->Cont.VarLenCont), "%s:%s", 
+                    (char*)Msg.Cont.VarLenCont, MY_SERVER_COMM_REPLY);
     replyMsg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
 
-    ret = SendMsg(Fd, *replyMsg);
+    ret = SendMsg(Fd, replyMsg);
     if (ret)
     {
         LogErr("Send msg failed");
@@ -114,7 +115,7 @@ CommonReturn:
 }
 
 static void*
-_Server_WorkerFunc(
+_ServerWorkerProc(
     void* arg
     )
 {
@@ -123,7 +124,7 @@ _Server_WorkerFunc(
     MY_MSG msg;
     UNUSED(arg);
 
-    serverFd = _Server_CreateFd();
+    serverFd = _ServerCreateFd();
     if (0 > serverFd)
     {
         LogErr("Create server socket failed");
@@ -176,7 +177,7 @@ _Server_WorkerFunc(
                 ret = RecvMsg(waitEvents[loop].data.fd, &msg);
                 if (!ret)
                 {
-                    ret = _Server_HandleMsg(waitEvents[loop].data.fd, msg);
+                    ret = _ServerHandleMsg(waitEvents[loop].data.fd, msg);
                     if (ret)
                     {
                         LogErr("Handle msg filed %d", ret);
@@ -216,7 +217,7 @@ CommonReturn:
 }
 
 static int 
-_Server_ParseConf(
+_ServerParseConf(
     SERVER_CONF_PARAM *ServerConf
     )
 {
@@ -344,7 +345,7 @@ CommonReturn:
 }
 
 static void
-_Server_Exit(
+_ServerExit(
     void
     )
 {
@@ -362,7 +363,7 @@ _Server_Exit(
 }
 
 static int
-_Server_Init(
+_ServerInit(
     int argc,
     char *argv[]
     )
@@ -374,7 +375,7 @@ _Server_Init(
     memset(&initParam, 0, sizeof(initParam));
     memset(&serverConf, 0, sizeof(serverConf));
 
-    ret = _Server_ParseConf(&serverConf);
+    ret = _ServerParseConf(&serverConf);
     if (ret)
     {
         LogErr("Init conf failed!");
@@ -398,7 +399,7 @@ _Server_Init(
     initParam.CmdLineArg->Argc = argc;
     initParam.CmdLineArg->Argv = argv;
     initParam.CmdLineArg->RoleName = MY_SERVER_ROLE_NAME;
-    initParam.CmdLineArg->ExitFunc = _Server_Exit;
+    initParam.CmdLineArg->ExitFunc = _ServerExit;
     // log init args
     initParam.LogArg->LogFilePath = serverConf.LogFilePath;
     initParam.LogArg->LogLevel = serverConf.LogLevel;
@@ -427,7 +428,7 @@ _Server_Init(
             goto CommonReturn;
         }
         sg_ServerMsgHandlerShouldExit = FALSE;
-        ret = pthread_create(sg_ServerMsgHandler, NULL, _Server_WorkerFunc, NULL);
+        ret = pthread_create(sg_ServerMsgHandler, NULL, _ServerWorkerProc, NULL);
         if (ret) 
         {
             LogErr("Failed to create thread");
@@ -481,7 +482,7 @@ main(
     )
 {
     int ret = 0;
-    ret = _Server_Init(argc, argv);
+    ret = _ServerInit(argc, argv);
     if (ret)
     {
         if (MY_ERR_EXIT_WITH_SUCCESS != ret)
@@ -490,25 +491,7 @@ main(
         }
         goto CommonReturn;
     }
-
-/*
-    while(1)
-    {
-        sleep(1);
-        ret = AddTaskIntoThread(ServerTPoolCb, NULL);
-        if (ret)
-        {
-            LogErr("Add task failed ret %d", ret);
-            break;
-        }
-        ret = AddTaskIntoThreadAndWait(ServerTPoolCb, NULL);
-        if (ret)
-        {
-            LogErr("Add task failed ret %d", ret);
-            break;
-        }
-    }
-*/
+    
     while(1)
     {
         sleep(1);
