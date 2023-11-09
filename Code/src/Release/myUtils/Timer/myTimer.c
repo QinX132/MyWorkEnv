@@ -128,9 +128,15 @@ _TimerModuleEntry(
     event_base_dispatch(sg_TimerWorker.EventBase);
     
 CommonReturn:
+    sg_TimerWorker.IsRunning = FALSE;
     if (node)
     {
         _TimerFree(node);
+    }
+    if (sg_TimerWorker.EventBase)
+    {
+        event_base_free(sg_TimerWorker.EventBase);
+        sg_TimerWorker.EventBase = NULL;
     }
     pthread_exit(NULL);
 }
@@ -162,8 +168,6 @@ TimerModuleExit(
         pthread_mutex_unlock(&sg_TimerWorker.Lock);
         event_base_loopexit(sg_TimerWorker.EventBase, NULL);
         pthread_join(sg_TimerWorker.ThreadId, NULL);
-        event_base_free(sg_TimerWorker.EventBase);
-        sg_TimerWorker.EventBase = NULL;
         pthread_mutex_destroy(&sg_TimerWorker.Lock);
         ret = MemUnRegister(&sg_TimerMemId);
     }
@@ -177,6 +181,8 @@ TimerModuleInit(
     )
 {
     int ret = MY_SUCCESS;
+    int sleepIntervalUs = 10;
+    int waitTimeUs = sleepIntervalUs * 1000; // 10 ms
 
     if (sg_TimerWorker.IsRunning)
     {
@@ -199,9 +205,10 @@ TimerModuleInit(
         goto CommonReturn;
     }
 
-    while(!sg_TimerWorker.IsRunning)
+    while(!sg_TimerWorker.IsRunning && waitTimeUs >= 0)
     {
-        usleep(10);
+        usleep(sleepIntervalUs);
+        waitTimeUs -= sleepIntervalUs;
     }
 
 CommonReturn:

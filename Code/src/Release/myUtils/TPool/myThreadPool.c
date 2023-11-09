@@ -166,6 +166,8 @@ TPoolModuleInit(
     int loop = 0;
     int ret = 0;
     pthread_attr_t attr;
+    int sleepIntervalMs = 1;
+    int waitTimeMs = sleepIntervalMs * 10; // 10 ms
 
     if (sg_TPoolModuleInited)
     {
@@ -224,7 +226,7 @@ TPoolModuleInit(
     sg_TPoolModuleInited = TRUE;
 
     // to make sure workers are ready
-    while(1)
+    while(waitTimeMs >= 0)
     {
         pthread_mutex_lock(&sg_ThreadPool->Lock);
         if (sg_ThreadPool->CurrentThreadNum >= InitArg->ThreadPoolSize)
@@ -233,7 +235,8 @@ TPoolModuleInit(
             break;
         }
         pthread_mutex_unlock(&sg_ThreadPool->Lock);
-        usleep(1 * 1000);
+        usleep(sleepIntervalMs * 1000);
+        waitTimeMs -= sleepIntervalMs;
     };
     
 CommonReturn:

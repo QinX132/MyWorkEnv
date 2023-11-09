@@ -23,7 +23,7 @@ typedef struct _CLIENT_WORKER
     struct event_base *EventBase;
     struct event *Keepalive;
     struct event *RecvEvent;
-    BOOL IsReady;
+    BOOL IsRunning;
 }
 CLIENT_WORKER;
 
@@ -32,7 +32,7 @@ static CLIENT_WORKER sg_ClientWorker = {
         .Thread = 0,
         .EventBase = NULL,
         .RecvEvent = NULL,
-        .IsReady = FALSE
+        .IsRunning = FALSE
     };
 
 static int
@@ -165,10 +165,11 @@ _ClientWorkerProc(
     tv.tv_usec = 0;
     event_add(sg_ClientWorker.Keepalive, &tv);
     event_active(sg_ClientWorker.Keepalive, EV_READ, 0);
-    sg_ClientWorker.IsReady = TRUE;
+    sg_ClientWorker.IsRunning = TRUE;
     event_base_dispatch(sg_ClientWorker.EventBase);
 
 CommonReturn:
+    sg_ClientWorker.IsRunning = FALSE;
     if (sg_ClientWorker.ClientFd > 0)
     {
         close(sg_ClientWorker.ClientFd);
@@ -270,6 +271,9 @@ _ClientWorkerInit(
     )
 {
     int ret = MY_SUCCESS;
+    int sleepIntervalUs = 10;
+    int waitTimeUs = sleepIntervalUs * 1000; // 10 ms
+    
     if (!ClientConfParam)
     {
         ret = MY_EINVAL;
@@ -296,9 +300,10 @@ _ClientWorkerInit(
         goto CommonReturn;
     }
 
-    while(!sg_ClientWorker.IsReady)
+    while(!sg_ClientWorker.IsRunning && waitTimeUs >= 0)
     {
-        usleep(10);
+        usleep(sleepIntervalUs);
+        waitTimeUs -= sleepIntervalUs;
     }
 
 CommonReturn:
@@ -413,7 +418,7 @@ _ClientMainLoop(
         goto CommonReturn;
     }
     
-    while (TRUE)
+    while (sg_ClientWorker.IsRunning)
     {
         memset(buf, 0, bufLen);
         fgets(buf, bufLen, stdin);
@@ -468,7 +473,7 @@ int main(
     {
         if (MY_ERR_EXIT_WITH_SUCCESS != ret)
         {
-            LogErr("Client init failed! ret %d", ret);
+            printf("Client init failed! ret %d", ret);
         }
         goto CommonReturn;
     }

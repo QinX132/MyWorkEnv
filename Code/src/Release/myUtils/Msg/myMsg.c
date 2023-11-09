@@ -259,7 +259,7 @@ CommonReturn:
     if (sg_MsgStats.Inited)
     {
         pthread_spin_lock(&sg_MsgStats.Lock);
-        if (ret != 0)
+        if (ret != 0 && ret != MY_ERR_PEER_CLOSED)
         {
             sg_MsgStats.MsgRecvFailed ++;
         }

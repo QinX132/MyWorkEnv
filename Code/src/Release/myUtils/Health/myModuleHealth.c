@@ -196,9 +196,15 @@ _HealthModuleEntry(
     event_base_dispatch(sg_HealthWorker.EventBase);
     
 CommonReturn:
+    sg_HealthWorker.IsRunning = FALSE;
     if (node)
     {
         _HealthFree(node);
+    }
+    if (sg_HealthWorker.EventBase)
+    {
+        event_base_free(sg_HealthWorker.EventBase);
+        sg_HealthWorker.EventBase = NULL;
     }
     pthread_exit(NULL);
 }
@@ -275,8 +281,6 @@ HealthModuleExit(
         pthread_spin_unlock(&sg_HealthWorker.Lock);
         event_base_loopexit(sg_HealthWorker.EventBase, NULL);
         pthread_join(sg_HealthWorker.ThreadId, NULL);
-        event_base_free(sg_HealthWorker.EventBase);
-        sg_HealthWorker.EventBase = NULL;
         pthread_spin_destroy(&sg_HealthWorker.Lock);
         ret = MemUnRegister(&sg_HealthModId);
     }
@@ -290,6 +294,8 @@ HealthModuleInit(
     )
 {
     int ret = MY_SUCCESS;
+    int sleepIntervalUs = 10;
+    int waitTimeUs = sleepIntervalUs * 1000; // 10 ms
 
     if (sg_HealthWorker.IsRunning)
     {
@@ -329,9 +335,10 @@ HealthModuleInit(
         goto CommonReturn;
     }
 
-    while(!sg_HealthWorker.IsRunning)
+    while(!sg_HealthWorker.IsRunning && waitTimeUs >= 0)
     {
-        usleep(10);
+        usleep(sleepIntervalUs);
+        waitTimeUs -= sleepIntervalUs;
     }
 
 CommonReturn:

@@ -16,6 +16,7 @@ typedef struct _SERVER_CONF_PARAM
     MY_LOG_LEVEL LogLevel;
     char LogFilePath[MY_BUFF_64];
     MY_HEALTH_MODULE_INIT_ARG HealthArg;
+    MY_TPOOL_MODULE_INIT_ARG TPoolArg;
 }
 SERVER_CONF_PARAM;
 
@@ -131,19 +132,19 @@ _ServerWorkerProc(
         goto CommonReturn;
     }
 
-    int epoll_fd = -1;
+    int epollFd = -1;
     int event_count = 0;
     struct epoll_event event, waitEvents[MY_MAX_EVENTS];
 
-    epoll_fd = epoll_create1(0);
-    if (0 > epoll_fd)
+    epollFd = epoll_create1(0);
+    if (0 > epollFd)
     {
         LogErr("Create epoll socket failed %d", errno);
         goto CommonReturn;
     }
     event.events = EPOLLIN; // LT fd
     event.data.fd = serverFd;
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serverFd, &event))
+    if(epoll_ctl(epollFd, EPOLL_CTL_ADD, serverFd, &event))
     {
         LogErr("Add to epoll socket failed %d", errno);
         goto CommonReturn;
@@ -153,7 +154,7 @@ _ServerWorkerProc(
     /* recv */
     while (!sg_ServerMsgHandlerShouldExit)
     {
-        event_count = epoll_wait(epoll_fd, waitEvents, MY_MAX_EVENTS, 1000); 
+        event_count = epoll_wait(epollFd, waitEvents, MY_MAX_EVENTS, 1000); 
         for(loop = 0; loop < event_count; loop ++)
         {
             if (waitEvents[loop].data.fd == serverFd)
@@ -169,7 +170,7 @@ _ServerWorkerProc(
 
                     event.data.fd = tmpClientFd;
                     event.events = EPOLLIN | EPOLLET;  
-                    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, tmpClientFd, &event);
+                    epoll_ctl(epollFd, EPOLL_CTL_ADD, tmpClientFd, &event);
                 }
             }
             else if (waitEvents[loop].events & EPOLLIN)
@@ -194,14 +195,14 @@ _ServerWorkerProc(
                     {
                         LogErr("Recv from %d failed %d:%s", waitEvents[loop].data.fd, ret, My_StrErr(ret));
                     }
-                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                    epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                     close(waitEvents[loop].data.fd);
                 }
             }
             else if (waitEvents[loop].events & EPOLLERR || waitEvents[loop].events & EPOLLHUP)
             {
                 LogInfo("%d error happen!", waitEvents[loop].data.fd);
-                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
+                epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                 close(waitEvents[loop].data.fd);
             }
         }
@@ -210,8 +211,8 @@ _ServerWorkerProc(
 CommonReturn:
     if (serverFd != -1)
         close(serverFd);
-    if (epoll_fd != -1)
-        close(epoll_fd);
+    if (epollFd != -1)
+        close(epollFd);
     
     return NULL;
 }
@@ -273,6 +274,7 @@ _ServerParseConf(
                 goto CommonReturn;
             }
         }
+        // module health check
         else if ((ptr = strstr(line, "MsgHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.MsgHealthIntervalS = atoi(ptr + strlen("MsgHealthIntervalS="));
@@ -333,6 +335,37 @@ _ServerParseConf(
                 goto CommonReturn;
             }
         }
+        // TPool param
+        else if ((ptr = strstr(line, "TPoolSize=")) != NULL)
+        {
+            ServerConf->TPoolArg.ThreadPoolSize = atoi(ptr + strlen("TPoolSize="));
+            if (ServerConf->TPoolArg.ThreadPoolSize < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid TPoolSize %d!", ServerConf->TPoolArg.ThreadPoolSize);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "TPoolDefaultTimeout=")) != NULL)
+        {
+            ServerConf->TPoolArg.Timeout = atoi(ptr + strlen("TPoolDefaultTimeout="));
+            if (ServerConf->TPoolArg.Timeout < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid TPoolDefaultTimeout %d!", ServerConf->TPoolArg.Timeout);
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "TPoolTaskQueueMaxLength=")) != NULL)
+        {
+            ServerConf->TPoolArg.TaskListMaxLength = atoi(ptr + strlen("TPoolTaskQueueMaxLength="));
+            if (ServerConf->TPoolArg.TaskListMaxLength < 0)
+            {
+                ret = MY_EIO;
+                LogErr("Invalid TaskListMaxLength %d!", ServerConf->TPoolArg.TaskListMaxLength);
+                goto CommonReturn;
+            }
+        }
         memset(line, 0, sizeof(line));
     }
 
@@ -382,13 +415,11 @@ _ServerInit(
         goto CommonReturn;
     }
 
-    initParam.HealthArg = (MY_HEALTH_MODULE_INIT_ARG*)calloc(sizeof(MY_HEALTH_MODULE_INIT_ARG), 1);
     initParam.InitMsgModule = TRUE;
     initParam.InitTimerModule = TRUE;
     initParam.CmdLineArg = (MY_CMDLINE_MODULE_INIT_ARG*)calloc(sizeof(MY_CMDLINE_MODULE_INIT_ARG), 1);
     initParam.LogArg = (MY_LOG_MODULE_INIT_ARG*)calloc(sizeof(MY_LOG_MODULE_INIT_ARG), 1);
-    initParam.TPoolArg = (MY_TPOOL_MODULE_INIT_ARG*)calloc(sizeof(MY_TPOOL_MODULE_INIT_ARG), 1);
-    if (!initParam.HealthArg || !initParam.CmdLineArg || !initParam.LogArg || !initParam.TPoolArg)
+    if (!initParam.CmdLineArg || !initParam.LogArg)
     {
         LogErr("Apply mem failed!");
         goto CommonReturn;
@@ -405,9 +436,7 @@ _ServerInit(
     initParam.LogArg->LogLevel = serverConf.LogLevel;
     initParam.LogArg->RoleName = MY_SERVER_ROLE_NAME;
     // tpool init args
-    initParam.TPoolArg->ThreadPoolSize = 5;
-    initParam.TPoolArg->Timeout = 5;
-    initParam.TPoolArg->TaskListMaxLength = 1024;
+    initParam.TPoolArg = &serverConf.TPoolArg;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {
@@ -444,10 +473,6 @@ CommonReturn:
     if (initParam.CmdLineArg)
     {
         free(initParam.CmdLineArg);
-    }
-    if (initParam.TPoolArg)
-    {
-        free(initParam.TPoolArg);
     }
     return ret;
 }
