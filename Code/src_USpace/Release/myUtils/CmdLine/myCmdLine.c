@@ -524,7 +524,7 @@ CmdLineModuleInit(
     {
         if (strcasecmp(InitArg->Argv[1], sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt) == 0)
         {
-            LogErr("%s is not running!", InitArg->RoleName);
+            printf("%s is not running!\n", InitArg->RoleName);
         }
         goto CommonErr;
     }

@@ -1,16 +1,13 @@
 #include "include.h"
-#include "myMsg.h"
-#include "myLogIO.h"
-#include "myThreadPool.h"
-#include "myModuleHealth.h"
 #include "myModuleCommon.h"
+#include "myClientServerMsgs.h"
 
 #define MY_CLIENT_ROLE_NAME                                 "tcpclient"
 #define MY_CLIENT_CONF_ROOT                                 MY_CLIENT_ROLE_NAME".conf"
 
 typedef struct _CLIENT_CONF_PARAM
 {
-    char PeerIp[MY_BUFF_64];
+    char ServerIp[MY_BUFF_64];
     MY_LOG_LEVEL LogLevel;
     char LogFilePath[MY_BUFF_64];
 }
@@ -34,6 +31,29 @@ static CLIENT_WORKER sg_ClientWorker = {
         .RecvEvent = NULL,
         .IsRunning = FALSE
     };
+
+static void
+_ClientWorkerExit(
+    void
+    )
+{
+    if (sg_ClientWorker.EventBase && sg_ClientWorker.Thread)
+    {
+        event_base_loopexit(sg_ClientWorker.EventBase, NULL);
+        pthread_join(*sg_ClientWorker.Thread, NULL);
+        sg_ClientWorker.Thread = NULL;
+    }
+}
+
+static void 
+_ClientExit(
+    void
+    )
+{
+    _ClientWorkerExit();
+    MyModuleCommonExit();
+    system("killall "MY_CLIENT_ROLE_NAME);
+}
 
 static int
 _ClientCreateFd(
@@ -100,12 +120,21 @@ _ClientRecvMsg(
     void *Arg
     )
 {
+    int ret = MY_SUCCESS;
+    MY_MSG msg;
     UNUSED(Event);
     UNUSED(Arg);
     
-    MY_MSG msg;
-    (void)RecvMsg(Fd, &msg);
-    printf("<<<< RecvMsg: %s\n", (char*)msg.Cont.VarLenCont);
+    ret = RecvMsg(Fd, &msg);
+    if (ret == MY_SUCCESS)
+    {
+        printf("<<<< RecvMsg: %s\n", (char*)msg.Cont.VarLenCont);
+    }
+    else
+    {
+        printf("Error happen, ret %d:%s\n", ret, My_StrErr(ret));
+        _ClientExit();
+    }
 }
 
 #define MY_CLIENT_WORKER_KEEPALIVE_INTERVAL                             1 // s
@@ -131,7 +160,7 @@ _ClientWorkerProc(
     CLIENT_CONF_PARAM *confArg = (CLIENT_CONF_PARAM*)Arg;
     struct timeval tv;
     
-    ret = _ClientCreateFd(confArg->PeerIp, MY_TCP_SERVER_PORT, &sg_ClientWorker.ClientFd);
+    ret = _ClientCreateFd(confArg->ServerIp, MY_TCP_SERVER_PORT, &sg_ClientWorker.ClientFd);
     if (ret)
     {
         LogErr("Create fd failed, %d:%s!", ret, My_StrErr(ret));
@@ -216,18 +245,18 @@ _ClientParseConf(
         {
             continue;
         }
-        else if ((ptr = strstr(line, "PeerIp=")) != NULL)
+        else if ((ptr = strstr(line, "ServerIp=")) != NULL)
         {
-            len = snprintf(ClientConf->PeerIp, sizeof(ClientConf->PeerIp), "%s", ptr + strlen("PeerIp="));
+            len = snprintf(ClientConf->ServerIp, sizeof(ClientConf->ServerIp), "%s", ptr + strlen("ServerIp="));
             if (len <= 0)
             {
                 ret = MY_EIO;
-                LogErr("Invalid PeerIp %s!", ptr + strlen("PeerIp="));
+                LogErr("Invalid ServerIp %s!", ptr + strlen("ServerIp="));
                 goto CommonReturn;
             }
-            if ('\n' == ClientConf->PeerIp[len - 1])
+            if ('\n' == ClientConf->ServerIp[len - 1])
             {
-                ClientConf->PeerIp[len - 1] = '\0';
+                ClientConf->ServerIp[len - 1] = '\0';
             }
         }
         else if ((ptr = strstr(line, "LogLevel=")) != NULL)
@@ -309,19 +338,6 @@ _ClientWorkerInit(
 CommonReturn:
     return ret;
 }
-
-static void
-_ClientWorkerExit(
-    void
-    )
-{
-    if (sg_ClientWorker.EventBase && sg_ClientWorker.Thread)
-    {
-        event_base_loopexit(sg_ClientWorker.EventBase, NULL);
-        pthread_join(*sg_ClientWorker.Thread, NULL);
-        sg_ClientWorker.Thread = NULL;
-    }
-}
     
 static int
 _ClientInit(
@@ -389,15 +405,6 @@ CommonReturn:
     return ret;
 }
 
-void 
-ClientExit(
-    void
-    )
-{
-    _ClientWorkerExit();
-    MyModuleCommonExit();
-}
-
 void
 _ClientMainLoop(
     void
@@ -408,8 +415,6 @@ _ClientMainLoop(
     size_t bufLen = MY_MSG_CONTENT_MAX_LEN;
     char *buf = NULL;
     uint32_t inputLen = 0;
-    struct timeval tv;
-    uint32_t currentSessionId = 0;
 
     buf = MyCalloc(bufLen);
     if (!buf)
@@ -435,12 +440,12 @@ _ClientMainLoop(
             goto CommonReturn;
         }
 
-        gettimeofday(&tv, NULL);
-        msgToSend->Head.MsgContentLen = inputLen;
-        msgToSend->Head.MagicVer = 0xff;
-        msgToSend->Head.SessionId = currentSessionId ++;
-        memcpy(msgToSend->Cont.VarLenCont, buf, msgToSend->Head.MsgContentLen);
-        msgToSend->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
+        ret = FillMsgCont(msgToSend, buf, inputLen);
+        if (ret)
+        {
+            LogErr("Fill msg failed!");
+            goto CommonReturn;
+        }
 
         ret = SendMsg(sg_ClientWorker.ClientFd, msgToSend);
         if (ret)
@@ -483,7 +488,7 @@ int main(
 CommonReturn:
     if (ret != MY_ERR_EXIT_WITH_SUCCESS)
     {
-        ClientExit();
+        _ClientExit();
     }
     return ret;
 }

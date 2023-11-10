@@ -1,9 +1,6 @@
 #include "include.h"
-#include "myLogIO.h"
-#include "myMsg.h"
-#include "myThreadPool.h"
-#include "myModuleHealth.h"
 #include "myModuleCommon.h"
+#include "myClientServerMsgs.h"
 
 #define MY_MAX_EVENTS                                       1024
 #define MY_SERVER_ROLE_NAME                                 "tcpserver"
@@ -19,8 +16,6 @@ typedef struct _SERVER_CONF_PARAM
     MY_TPOOL_MODULE_INIT_ARG TPoolArg;
 }
 SERVER_CONF_PARAM;
-
-static int sg_MsgId = 0;
 
 pthread_t *sg_ServerMsgHandler = NULL;
 static BOOL sg_ServerMsgHandlerShouldExit = FALSE;
@@ -79,7 +74,6 @@ _ServerHandleMsg(
 {
     int ret = 0;
     MY_MSG *replyMsg = NewMsg();
-    struct timeval tv;
 
     if (!replyMsg)
     {
@@ -92,14 +86,16 @@ _ServerHandleMsg(
         goto CommonReturn;
     }
 
-    gettimeofday(&tv, NULL);
-    replyMsg->Head.MsgId = sg_MsgId ++;
-    replyMsg->Head.MagicVer = Msg.Head.MagicVer;
-    replyMsg->Head.SessionId = Msg.Head.SessionId;
-    replyMsg->Head.MsgContentLen = (uint32_t)
-        snprintf((char*)replyMsg->Cont.VarLenCont, sizeof(replyMsg->Cont.VarLenCont), "%s:%s", 
-                    (char*)Msg.Cont.VarLenCont, MY_SERVER_COMM_REPLY);
-    replyMsg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
+    replyMsg->Head.Type = Msg.Head.Type + 1;
+
+    if (FillMsgCont(replyMsg, Msg.Cont.VarLenCont, Msg.Head.ContentLen - 1) ||
+        FillMsgCont(replyMsg, (void*)":", sizeof(char)) ||
+        FillMsgCont(replyMsg, (void*)MY_SERVER_COMM_REPLY, sizeof(MY_SERVER_COMM_REPLY))
+        )
+    if (ret)
+    {
+        LogErr("Fill msg failed");
+    }
 
     ret = SendMsg(Fd, replyMsg);
     if (ret)
@@ -171,6 +167,7 @@ _ServerWorkerProc(
                     event.data.fd = tmpClientFd;
                     event.events = EPOLLIN | EPOLLET;  
                     epoll_ctl(epollFd, EPOLL_CTL_ADD, tmpClientFd, &event);
+                    LogInfo("Recv new connection, fd %d", tmpClientFd);
                 }
             }
             else if (waitEvents[loop].events & EPOLLIN)

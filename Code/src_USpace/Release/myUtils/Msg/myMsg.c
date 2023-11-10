@@ -138,6 +138,9 @@ RecvMsg(
         if (recvRet > 0)
         {
             currentLen += recvRet;
+#ifdef DEBUG
+            LogInfo("recvRet = %d, HeadLen=%d", recvRet, sizeof(MY_MSG_HEAD));
+#endif 
         }
         else if (recvRet == 0)
         {
@@ -160,8 +163,9 @@ RecvMsg(
         }
     }
     len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "Recv Msg: MsgId=%llu MsgContentLen=%u MagicVer=%u, SessionId=%u ", 
-                RetMsg->Head.MsgId, RetMsg->Head.MsgContentLen, RetMsg->Head.MagicVer, RetMsg->Head.SessionId);
+                "Recv Msg: MsgType=%u ContentLen=%u VerMagic=%u, SessionId=%u, IsMsgEnd=%u ", 
+                RetMsg->Head.Type, RetMsg->Head.ContentLen, RetMsg->Head.VerMagic, RetMsg->Head.SessionId,
+                RetMsg->Head.IsMsgEnd);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
         ret = MY_ENOBUFS;
@@ -170,10 +174,10 @@ RecvMsg(
     }
     recvLogLen += len;
     // recv content
-    recvLen = RetMsg->Head.MsgContentLen;
+    recvLen = RetMsg->Head.ContentLen;
     if (unlikely(recvLen > (int)sizeof(MY_MSG_CONT)))
     {
-        LogErr("Too long cont len %u", RetMsg->Head.MsgContentLen);
+        LogErr("Too long cont len %u", RetMsg->Head.ContentLen);
         ret = EINVAL;
         goto CommonReturn;
     }
@@ -184,6 +188,9 @@ RecvMsg(
         if (recvRet > 0)
         {
             currentLen += recvRet;
+#ifdef DEBUG
+            LogInfo("recvRet = %d, ContLen=%d", recvRet, RetMsg->Head.ContentLen);
+#endif 
         }
         else if (recvRet == 0)
         {
@@ -223,6 +230,9 @@ RecvMsg(
         if (recvRet > 0)
         {
             currentLen += recvRet;
+#ifdef DEBUG
+            LogInfo("recvRet = %d, TailLen=%d", recvRet, sizeof(MY_MSG_TAIL));
+#endif 
         }
         else if (recvRet == 0)
         {
@@ -266,7 +276,7 @@ CommonReturn:
         else
         {
             sg_MsgStats.MsgRecv ++;
-            sg_MsgStats.MsgRecvBytes += sizeof(MY_MSG_HEAD) + RetMsg->Head.MsgContentLen + sizeof(MY_MSG_TAIL);
+            sg_MsgStats.MsgRecvBytes += sizeof(MY_MSG_HEAD) + RetMsg->Head.ContentLen + sizeof(MY_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgStats.Lock);
     }
@@ -280,6 +290,7 @@ NewMsg(
     )
 {
     MY_MSG* retMsg = NULL;
+    static uint32_t sessionId = 0;
     
     if (!sg_MsgStats.Inited)
     {
@@ -287,6 +298,13 @@ NewMsg(
     }
     
     retMsg = (MY_MSG*)_MsgCalloc(sizeof(MY_MSG));
+    if (retMsg)
+    {
+        retMsg->Head.VerMagic = MY_MSG_VER_MAGIC;
+        pthread_spin_lock(&sg_MsgStats.Lock);
+        retMsg->Head.SessionId = sessionId ++;
+        pthread_spin_unlock(&sg_MsgStats.Lock);
+    }
 
 CommonReturn:
     return retMsg;
@@ -314,14 +332,18 @@ SendMsg(
     int sendLen = 0;
     int currentLen = 0;
     int sendRet = 0;
-    char recvLogBuff[MY_MSG_CONTENT_MAX_LEN + MY_BUFF_1024] = {0};
-    size_t recvLogLen = 0;
+    char sendLogBuff[MY_MSG_CONTENT_MAX_LEN + MY_BUFF_1024] = {0};
+    size_t sendLogLen = 0;
     size_t len = 0;
+    struct timeval tv;
     
     if (!sg_MsgStats.Inited || !Msg)
     {
         goto CommonReturn;
     }
+    
+    gettimeofday(&tv, NULL);
+    Msg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
     //send msg header
     sendLen = sizeof(MY_MSG_HEAD);
     currentLen = 0;
@@ -331,6 +353,9 @@ SendMsg(
         if (sendRet > 0)
         {
             currentLen += sendRet;
+#ifdef DEBUG
+            LogInfo("sendRet = %d, HeadLen=%d", sendRet, sizeof(MY_MSG_HEAD));
+#endif 
         }
         else if (sendRet == 0)
         {
@@ -343,18 +368,19 @@ SendMsg(
             goto CommonReturn;
         }
     }
-    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "Send Msg: MsgId=%llu MsgContentLen=%u MagicVer=%u, SessionId=%u ", 
-                Msg->Head.MsgId, Msg->Head.MsgContentLen, Msg->Head.MagicVer, Msg->Head.SessionId);
-    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    len = snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
+                "Send Msg: MsgType=%u ContentLen=%u VerMagic=%u, SessionId=%u, IsMsgEnd=%u ", 
+                Msg->Head.Type, Msg->Head.ContentLen, Msg->Head.VerMagic, Msg->Head.SessionId,
+                Msg->Head.IsMsgEnd);
+    if (len >= sizeof(sendLogBuff) - sendLogLen)
     {
         ret = MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
-    recvLogLen += len;
+    sendLogLen += len;
     // send msg content
-    sendLen = Msg->Head.MsgContentLen;
+    sendLen = Msg->Head.ContentLen;
     currentLen = 0;
     for(; currentLen < sendLen;)
     {
@@ -362,6 +388,9 @@ SendMsg(
         if (sendRet > 0)
         {
             currentLen += sendRet;
+#ifdef DEBUG
+            LogInfo("sendRet = %d, ContLen=%d", sendRet, Msg->Head.ContentLen);
+#endif 
         }
         else if (sendRet == 0)
         {
@@ -374,15 +403,15 @@ SendMsg(
             goto CommonReturn;
         }
     }
-    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+    len = snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
                 "VarLenCont=\"%s\" ", Msg->Cont.VarLenCont);
-    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    if (len >= sizeof(sendLogBuff) - sendLogLen)
     {
         ret = MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
-    recvLogLen += len;
+    sendLogLen += len;
     // send msg tail
     sendLen = sizeof(MY_MSG_TAIL);
     currentLen = 0;
@@ -392,6 +421,9 @@ SendMsg(
         if (sendRet > 0)
         {
             currentLen += sendRet;
+#ifdef DEBUG
+            LogInfo("sendRet = %d, TailLen=%d", sendRet, sizeof(MY_MSG_TAIL));
+#endif 
         }
         else if (sendRet == 0)
         {
@@ -404,17 +436,17 @@ SendMsg(
             goto CommonReturn;
         }
     }
-    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+    len = snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
                 "TimeStamp=%llu", Msg->Tail.TimeStamp);
-    if (len >= sizeof(recvLogBuff) - recvLogLen)
+    if (len >= sizeof(sendLogBuff) - sendLogLen)
     {
         ret = MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
-    recvLogLen += len;
+    sendLogLen += len;
 
-    LogInfo("%s", recvLogBuff);
+    LogInfo("%s", sendLogBuff);
 
 CommonReturn:
     if (sg_MsgStats.Inited)
@@ -427,9 +459,37 @@ CommonReturn:
         else
         {
             sg_MsgStats.MsgSend ++;
-            sg_MsgStats.MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg->Head.MsgContentLen + sizeof(MY_MSG_TAIL);
+            sg_MsgStats.MsgSendBytes += sizeof(MY_MSG_HEAD) + Msg->Head.ContentLen + sizeof(MY_MSG_TAIL);
         }
         pthread_spin_unlock(&sg_MsgStats.Lock);
     }
     return ret;
 }
+
+int
+FillMsgCont(
+    MY_MSG *Msg,
+    void* FillCont,
+    size_t FillContLen
+    )
+{
+    int ret = MY_SUCCESS;
+    if (!Msg || !FillCont || !FillContLen)
+    {
+        ret = MY_EINVAL;
+        goto CommonReturn;
+    }
+
+    if (FillContLen >= sizeof(Msg->Cont.VarLenCont) - Msg->Head.ContentLen)
+    {
+        ret = MY_ENOMEM;
+        goto CommonReturn;
+    }
+
+    memcpy(Msg->Cont.VarLenCont + Msg->Head.ContentLen, FillCont, FillContLen);
+    Msg->Head.ContentLen += FillContLen;
+
+CommonReturn:
+    return ret;
+}
+

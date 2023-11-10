@@ -6,29 +6,17 @@
 extern "C"{
 #endif
 
-#define MY_SESSION_ID_MAX_LEN                                   64
-#define MY_DISCONNECT_STRING                                    "disconnect"
-#define MY_MSX_CONTENT_LEN                                      128
 #define MY_MSG_CONTENT_MAX_LEN                                  (1024*1024)
+#define MY_MSG_VER_MAGIC                                        0x10
 
-typedef enum _MY_MSG_TYPE{
-    MY_MSG_TYPE_UNUSED,
-    MY_MSG_TYPE_FIRST_MSG,
-    MY_MSG_TYPE_SAY_HELLO_TO_ME,
-    MY_MSG_TYPE_SHOW_SESSION_TO_ME,
-    MY_MSG_TYPE_ECHO_CONT_TO_ME,
-    MY_MSG_TYPE_SHOW_CMD_REPLY_TO_ME,
-    
-    MY_MSG_TYPE_MAX
-}
-MY_MSG_TYPE;
-
+// total 40 Bytes
 typedef struct _MY_MSG_HEAD{
-    uint64_t MsgId;
-    uint32_t MsgContentLen;
-    uint32_t MagicVer;
+    uint8_t VerMagic;
+    uint8_t IsMsgEnd;
+    uint16_t ContentLen;
     uint32_t SessionId;
-    uint8_t Reserved[64];
+    uint16_t Type;
+    uint8_t Reserved[30];
 }
 MY_MSG_HEAD;
 
@@ -38,13 +26,15 @@ typedef struct _MY_MSG_CONT
 }
 MY_MSG_CONT;
 
+// total 88 Bytes
 typedef struct _MY_MSG_TAIL
 {
+    uint8_t Reserved[16];
     uint64_t TimeStamp;
     uint8_t Sign[64];
-    uint8_t Reserved[64];
 }
 MY_MSG_TAIL;
+// head + tail = 128 Bytes
 
 typedef struct _MY_MSG
 {
@@ -92,6 +82,13 @@ int
 SendMsg(
     int Fd,
     MY_MSG *Msg
+    );
+
+int
+FillMsgCont(
+    MY_MSG *Msg,
+    void* FillCont,
+    size_t FillContLen
     );
 
 #ifdef __cplusplus
