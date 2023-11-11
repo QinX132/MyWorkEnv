@@ -12,10 +12,6 @@ _CBFunc(
         (*((int*)arg)) ++;
     }
     
-    LogInfo("start exit\n");
-    do_exit(0);
-    LogInfo("end exit\n");
-
     return 0;
 }
 
@@ -25,7 +21,7 @@ static int __init _myModuleInit(void)
     int arg = 0;
 
     LW_THREAD_T tid;
-    tid = kthread_run(CBFunc, (void*)&arg, "myTestT");
+    tid = kthread_run(_CBFunc, (void*)&arg, "myTestT");
     
     ssleep(5);
     LogInfo("main : %d\n", arg);

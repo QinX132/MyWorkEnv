@@ -3,11 +3,12 @@ ARCH                ?= $(shell uname -m)
 
 TARGET              ?=  myKernMod
 
-WORK_ROOT			= .
+WORK_RELA_ROOT		= .
+WORK_ABSL_ROOT		= $(PWD)
 
 #get stress src files
-SRC_FILES   += 	$(WORK_ROOT)/myKernModMain.c
-ccflags-y	+=	-I$(WORK_ROOT)/include
+SRC_FILES   +=	myKernModMain.c
+ccflags-y	+=	-I$(WORK_ABSL_ROOT)/include
 
 OBJ_FILES 		= 	$(addsuffix .o, $(basename $(SRC_FILES)))
 
