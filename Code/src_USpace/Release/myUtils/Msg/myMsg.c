@@ -364,6 +364,11 @@ SendMsg(
         }
         else
         {
+            if (errno == EWOULDBLOCK || errno == EAGAIN)
+            {
+                // should retry
+                continue;
+            }
             LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
@@ -399,6 +404,11 @@ SendMsg(
         }
         else
         {
+            if (errno == EWOULDBLOCK || errno == EAGAIN)
+            {
+                // should retry
+                continue;
+            }
             LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
@@ -432,6 +442,11 @@ SendMsg(
         }
         else
         {
+            if (errno == EWOULDBLOCK || errno == EAGAIN)
+            {
+                // should retry
+                continue;
+            }
             LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
@@ -493,3 +508,14 @@ CommonReturn:
     return ret;
 }
 
+void
+ClearMsgCont(
+    MY_MSG *Msg
+    )
+{
+    if (Msg)
+    {
+        Msg->Head.ContentLen = 0;
+        memset(Msg->Cont.VarLenCont, 0, sizeof(Msg->Cont.VarLenCont));
+    }
+}

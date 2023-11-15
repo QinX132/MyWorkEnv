@@ -91,6 +91,11 @@ FillMsgCont(
     size_t FillContLen
     );
 
+void
+ClearMsgCont(
+    MY_MSG *Msg
+    );
+
 #ifdef __cplusplus
 }
 #endif

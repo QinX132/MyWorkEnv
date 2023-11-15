@@ -169,7 +169,7 @@ My_StrErr(
     int Errno
     )
 {
-    return Errno < MY_ERR_NO_START ? strerror(Errno) : 
+    return Errno < MY_ERR_NO_START && Errno >= 0 ? strerror(Errno) : 
             (Errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[Errno - MY_ERR_NO_START] : "UnknownErr");
 }
 #endif /* _MY_ERR_NO_ENUM_AND_STRING_ */

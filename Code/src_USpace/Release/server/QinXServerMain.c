@@ -1,12 +1,9 @@
 #include "include.h"
 #include "myModuleCommon.h"
-#include "myClientServerMsgs.h"
+#include "ServerProc.h"
 
-#define MY_MAX_EVENTS                                       1024
-#define MY_SERVER_ROLE_NAME                                 "tcpserver"
+#define MY_SERVER_ROLE_NAME                                 "QinXServer"
 #define MY_SERVER_CONF_ROOT                                 MY_SERVER_ROLE_NAME".conf"
-
-#define MY_SERVER_COMM_REPLY                                "success"
 
 typedef struct _SERVER_CONF_PARAM
 {
@@ -16,203 +13,6 @@ typedef struct _SERVER_CONF_PARAM
     MY_TPOOL_MODULE_INIT_ARG TPoolArg;
 }
 SERVER_CONF_PARAM;
-
-pthread_t *sg_ServerMsgHandler = NULL;
-static BOOL sg_ServerMsgHandlerShouldExit = FALSE;
-
-static int
-_ServerCreateFd(
-    void
-    )
-{
-    int ret = 0;
-    int serverFd = -1;
-    serverFd = socket(AF_INET, SOCK_STREAM, 0);     //create socket
-
-    int32_t reuseable = 1; // set port reuseable when fd closed
-    (void)setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));    // set reuseable
-
-    int nonBlock = fcntl(serverFd, F_GETFL, 0);
-    nonBlock |= O_NONBLOCK;
-    fcntl(serverFd, F_SETFL, nonBlock);         // set fd nonBlock
-
-    struct sockaddr_in localAddr = {0};
-    localAddr.sin_family = AF_INET;
-    localAddr.sin_port = htons(MY_TCP_SERVER_PORT);
-    localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
-
-    if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
-    {
-        ret = -1;
-        LogErr("Bind failed");
-        goto CommonReturn;
-    }
-    LogInfo("Bind serverFd: %d", serverFd);
-
-    if(0 > listen(serverFd, MY_MAX_CLIENT_NUM_PER_SERVER))
-    {
-        ret = -1;
-        LogErr("Listen failed");
-        goto CommonReturn;
-    }
-
-CommonReturn:
-    if (ret && serverFd != -1)
-    {
-        close(serverFd);
-        serverFd = -1;
-    }
-    return serverFd;
-}
-
-static
-int 
-_ServerHandleMsg(
-    int Fd,
-    MY_MSG Msg
-    )
-{
-    int ret = 0;
-    MY_MSG *replyMsg = NewMsg();
-
-    if (!replyMsg)
-    {
-        ret = MY_ENOMEM;
-        goto CommonReturn;
-    }
-    if (strcasecmp((char*)Msg.Cont.VarLenCont, MY_DISCONNECT_STRING) == 0)
-    {
-        ret = MY_ENOMEM;
-        goto CommonReturn;
-    }
-
-    replyMsg->Head.Type = Msg.Head.Type + 1;
-
-    if (FillMsgCont(replyMsg, Msg.Cont.VarLenCont, Msg.Head.ContentLen - 1) ||
-        FillMsgCont(replyMsg, (void*)":", sizeof(char)) ||
-        FillMsgCont(replyMsg, (void*)MY_SERVER_COMM_REPLY, sizeof(MY_SERVER_COMM_REPLY))
-        )
-    if (ret)
-    {
-        LogErr("Fill msg failed");
-    }
-
-    ret = SendMsg(Fd, replyMsg);
-    if (ret)
-    {
-        LogErr("Send msg failed");
-    }
-
-CommonReturn:
-    if (replyMsg)
-    {
-        FreeMsg(replyMsg);
-    }
-    return ret;
-}
-
-static void*
-_ServerWorkerProc(
-    void* arg
-    )
-{
-    int serverFd = -1;
-    int ret = 0;
-    MY_MSG msg;
-    UNUSED(arg);
-
-    serverFd = _ServerCreateFd();
-    if (0 > serverFd)
-    {
-        LogErr("Create server socket failed");
-        goto CommonReturn;
-    }
-
-    int epollFd = -1;
-    int event_count = 0;
-    struct epoll_event event, waitEvents[MY_MAX_EVENTS];
-
-    epollFd = epoll_create1(0);
-    if (0 > epollFd)
-    {
-        LogErr("Create epoll socket failed %d", errno);
-        goto CommonReturn;
-    }
-    event.events = EPOLLIN; // LT fd
-    event.data.fd = serverFd;
-    if(epoll_ctl(epollFd, EPOLL_CTL_ADD, serverFd, &event))
-    {
-        LogErr("Add to epoll socket failed %d", errno);
-        goto CommonReturn;
-    }
-
-    int loop = 0;
-    /* recv */
-    while (!sg_ServerMsgHandlerShouldExit)
-    {
-        event_count = epoll_wait(epollFd, waitEvents, MY_MAX_EVENTS, 1000); 
-        for(loop = 0; loop < event_count; loop ++)
-        {
-            if (waitEvents[loop].data.fd == serverFd)
-            {
-                int tmpClientFd = -1;
-                struct sockaddr tmpClientaddr;
-                socklen_t tmpClientLen;
-                tmpClientFd = accept(serverFd, &tmpClientaddr, &tmpClientLen);
-                if (tmpClientFd != -1)
-                {
-                    int flags = fcntl(tmpClientFd, F_GETFL, 0);
-                    fcntl(tmpClientFd, F_SETFL, flags | O_NONBLOCK);    // set non block
-
-                    event.data.fd = tmpClientFd;
-                    event.events = EPOLLIN | EPOLLET;  
-                    epoll_ctl(epollFd, EPOLL_CTL_ADD, tmpClientFd, &event);
-                    LogInfo("Recv new connection, fd %d", tmpClientFd);
-                }
-            }
-            else if (waitEvents[loop].events & EPOLLIN)
-            {
-                ret = RecvMsg(waitEvents[loop].data.fd, &msg);
-                if (!ret)
-                {
-                    ret = _ServerHandleMsg(waitEvents[loop].data.fd, msg);
-                    if (ret)
-                    {
-                        LogErr("Handle msg filed %d", ret);
-                        break;
-                    }
-                }
-                else
-                {
-                    if (MY_ERR_PEER_CLOSED == ret)
-                    {
-                        LogErr("Peer closed , fd = %d", waitEvents[loop].data.fd);
-                    }
-                    else
-                    {
-                        LogErr("Recv from %d failed %d:%s", waitEvents[loop].data.fd, ret, My_StrErr(ret));
-                    }
-                    epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
-                    close(waitEvents[loop].data.fd);
-                }
-            }
-            else if (waitEvents[loop].events & EPOLLERR || waitEvents[loop].events & EPOLLHUP)
-            {
-                LogInfo("%d error happen!", waitEvents[loop].data.fd);
-                epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
-                close(waitEvents[loop].data.fd);
-            }
-        }
-    }
-
-CommonReturn:
-    if (serverFd != -1)
-        close(serverFd);
-    if (epollFd != -1)
-        close(epollFd);
-    
-    return NULL;
-}
 
 static int 
 _ServerParseConf(
@@ -380,13 +180,8 @@ _ServerExit(
     )
 {
     // msg handler
-    if (sg_ServerMsgHandler)
-    {
-        sg_ServerMsgHandlerShouldExit = TRUE;
-        pthread_join(*sg_ServerMsgHandler, NULL);
-        MyFree(sg_ServerMsgHandler);
-    }
-    LogInfo("----------------- MsgHandler exited! -------------------");
+    ServerProcExit();
+    LogInfo("----------------- ServerProc exited! -------------------");
 
     MyModuleCommonExit();
     system("killall "MY_SERVER_ROLE_NAME);
@@ -444,24 +239,12 @@ _ServerInit(
         goto CommonReturn;
     }
     
-    if (!sg_ServerMsgHandler)
+    ret = ServerProcInit();
+    if (ret)
     {
-        sg_ServerMsgHandler = (pthread_t*)MyCalloc(sizeof(pthread_t));
-        if (!sg_ServerMsgHandler)
-        {
-            ret = MY_ENOMEM;
-            LogErr("Apply memory failed!");
-            goto CommonReturn;
-        }
-        sg_ServerMsgHandlerShouldExit = FALSE;
-        ret = pthread_create(sg_ServerMsgHandler, NULL, _ServerWorkerProc, NULL);
-        if (ret) 
-        {
-            LogErr("Failed to create thread");
-            goto CommonReturn;
-        }
+        LogErr("ServerProc init Failed!");
+        goto CommonReturn;
     }
-    LogInfo("Server init success!");
 CommonReturn:
     if (initParam.LogArg)
     {
@@ -471,30 +254,12 @@ CommonReturn:
     {
         free(initParam.CmdLineArg);
     }
+    if (ret && MY_ERR_EXIT_WITH_SUCCESS != ret)
+    {
+        ServerProcExit();
+        MyModuleCommonExit();
+    }
     return ret;
-}
-
-int ServerHealthMonitor(
-    char* Buff,
-    int BuffMaxLen,
-    int* Offset
-    )
-{
-    int ret = 0;
-    int len = 0;
-    len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, "<%s:[%s]>", "Server", "Active");
-    *Offset += len;
-
-    return ret;
-}
-
-void ServerTPoolCb(
-    void* Arg
-    )
-{
-    UNUSED(Arg);
-    LogInfo("Tpool task Callback entered");
-    sleep(10);
 }
 
 int
@@ -516,9 +281,9 @@ main(
     
     while(1)
     {
-        sleep(1);
+        sleep(60);
     }
+    
 CommonReturn:
-    //Server_Exit();
     return ret;
 }

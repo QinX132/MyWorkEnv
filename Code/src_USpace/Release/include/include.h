@@ -66,7 +66,7 @@
 #define MY_MAX_CLIENT_NUM_PER_SERVER                128
 #define MY_KILL_SIGNAL                              SIGUSR1
 
-#define MY_UATOMIC_INC(addr)                           __sync_fetch_and_add((addr), 1)
-#define MY_UATOMIC_DEC(addr)                           __sync_fetch_and_add((addr), -1)
+#define MY_UATOMIC_INC(addr)                        __sync_fetch_and_add((addr), 1)
+#define MY_UATOMIC_DEC(addr)                        __sync_fetch_and_add((addr), -1)
 
 #endif /* _MY_INCLUDE_H_ */

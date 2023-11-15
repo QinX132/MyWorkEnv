@@ -9,6 +9,7 @@ typedef struct _MY_CMDLINE_CONT
 {
     char* Opt;
     char* Help;
+    int Argc;
 }
 MY_CMDLINE_CONT;
 
@@ -49,13 +50,13 @@ static MY_CMNLINE_WORKER sg_CmdLineWorker = {
     };
 
 #define MY_CMDLINE_ARG_LIST                 \
-        __MY_CMDLINE_ARG("start", "start this program")  \
-        __MY_CMDLINE_ARG("stop", "stop this program")  \
-        __MY_CMDLINE_ARG("help", "show this page")  \
-        __MY_CMDLINE_ARG("showModuleStat", "show this program's modules stats")  \
-        __MY_CMDLINE_ARG("changeTPoolTimeout", "<Timout> (second)")  \
-        __MY_CMDLINE_ARG("changeTPoolMaxQueueLength", "<legnth> set tpool max que length")  \
-        __MY_CMDLINE_ARG("changeLogLevel", "<Level> (0-info 1-debug 2-warn 3-error)")
+        __MY_CMDLINE_ARG("start", "start this program", 2)  \
+        __MY_CMDLINE_ARG("stop", "stop this program", 2)  \
+        __MY_CMDLINE_ARG("help", "show this page", 2)  \
+        __MY_CMDLINE_ARG("showModuleStat", "show this program's modules stats", 2)  \
+        __MY_CMDLINE_ARG("changeTPoolTimeout", "<Timout> (second)", 3)  \
+        __MY_CMDLINE_ARG("changeTPoolMaxQueueLength", "<legnth> set tpool max que length", 3)  \
+        __MY_CMDLINE_ARG("changeLogLevel", "<Level> (0-info 1-debug 2-warn 3-error)", 3)
 
 typedef enum _MY_CMD_TYPE
 {
@@ -74,8 +75,8 @@ MY_CMD_TYPE;
 static const MY_CMDLINE_CONT sg_CmdLineCont[MY_CMD_TYPE_MAX_UNUSED] = 
 {
 #undef __MY_CMDLINE_ARG
-#define __MY_CMDLINE_ARG(_opt_,_help_) \
-    {_opt_, _help_},
+#define __MY_CMDLINE_ARG(_opt_,_help_, _argc_) \
+    {_opt_, _help_, _argc_},
     MY_CMDLINE_ARG_LIST
 #undef __MY_CMDLINE_ARG
 };
@@ -88,8 +89,8 @@ _CmdLineUsage(
     printf("--------------------------------------------------------------------------\n");
     printf("%10s Usage:\n\n", RoleName ? RoleName : "CmdLine");
 #undef __MY_CMDLINE_ARG
-#define __MY_CMDLINE_ARG(_opt_,_help_) \
-    printf("%30s: [%-30s]\n", _opt_, _help_);
+#define __MY_CMDLINE_ARG(_opt_,_help_,_argc_) \
+    printf("%30s: [%-s]\n", _opt_, _help_);
     MY_CMDLINE_ARG_LIST
 #undef __MY_CMDLINE_ARG
     printf("\n--------------------------------------------------------------------------\n");
@@ -277,7 +278,11 @@ _CmdServerHandleMsg(
         MY_UATOMIC_DEC(&sg_CmdLineWorker.Stat.ExecCnt);
         ret = MY_ENOSYS;
     }
-    LogDbg("%d:%s", ret, My_StrErr(ret));
+
+    if (ret)
+    {
+        LogErr("%d:%s", ret, My_StrErr(ret));
+    }
     return ret;
 }
 
@@ -356,7 +361,7 @@ _CmdServer_WorkerFunc(
                 }
                 else if (recvLen == 0)
                 {
-                    LogInfo("Client closed connection.");
+                    LogInfo("Client %d closed connection.", waitEvents[loop].data.fd);
                     epoll_ctl(epollFd, EPOLL_CTL_DEL, waitEvents[loop].data.fd, NULL);
                     close(waitEvents[loop].data.fd);
                 }
@@ -392,19 +397,20 @@ CommonReturn:
 
 static
 BOOL 
-_CmdLineIsSupported(
-    char* Cmd
+_CmdLineInputIsOk(
+    char** Argv,
+    int Argc
     )
 {
     int loop = 0;
-    if (!Cmd)
+    if (!Argv || Argc < 1 || !Argv[1])
     {
         return FALSE;
     }
     
     for(loop = 0; loop < MY_CMD_TYPE_MAX_UNUSED; loop ++)
     {
-        if (strstr(Cmd, sg_CmdLineCont[loop].Opt) == 0)
+        if (strcasecmp(Argv[1], sg_CmdLineCont[loop].Opt) == 0 && Argc == sg_CmdLineCont[loop].Argc)
             return TRUE;
     }
 
@@ -413,7 +419,8 @@ _CmdLineIsSupported(
 
 int
 _CmdClient_WorkerFunc(
-    char* Cmd
+    char** Argv,
+    int Argc
     )
 {
     int ret = 0;
@@ -421,17 +428,27 @@ _CmdClient_WorkerFunc(
     unsigned int serverIp = 0;
     struct sockaddr_in serverAddr = {0};
     int32_t reuseable = 1; // set port reuseable when fd closed
+    char cmd[MY_BUFF_64] = {0};
 
-    if (!Cmd || !_CmdLineIsSupported(Cmd))
+    if (!Argv || (Argc != 2 && Argc != 3) || !_CmdLineInputIsOk(Argv, Argc))
     {
         ret = MY_EINVAL;
         _CmdLineUsage(NULL);
         goto CommonReturn;
     }
-    if (strcasecmp(sg_CmdLineCont[MY_CMD_TYPE_START].Opt, Cmd) == 0)
+    if (strcasecmp(sg_CmdLineCont[MY_CMD_TYPE_START].Opt, Argv[1]) == 0)
     {
         printf("Already running!\n");
         goto CommonReturn;
+    }
+
+    if (Argc == 2)
+    {
+        snprintf(cmd, sizeof(cmd), "%s", Argv[1]);
+    }
+    else
+    {
+        snprintf(cmd, sizeof(cmd), "%s %s", Argv[1], Argv[2]);
     }
 
     clientFd = socket(AF_INET, SOCK_STREAM, 0);
@@ -452,7 +469,7 @@ _CmdClient_WorkerFunc(
         goto CommonReturn;
     }
 
-    ret = send(clientFd, Cmd, strlen(Cmd) + 1, 0);
+    ret = send(clientFd, cmd, strlen(cmd) + 1, 0);
     if (ret > 0)
     {
         ret = 0;
@@ -491,7 +508,6 @@ CmdLineModuleInit(
     int pidFd = -1;
     char path[MY_BUFF_64] = {0};
     int isRunning = 0;
-    char cmd[MY_BUFF_64] = {0};
     
     if (!InitArg || (InitArg->Argc != 2 && InitArg->Argc != 3) || 
         !InitArg->Argv || !InitArg->RoleName || !InitArg->ExitFunc)
@@ -500,7 +516,7 @@ CmdLineModuleInit(
     }
 
     sg_CmdLineWorker.ExitCb = InitArg->ExitFunc;
-    sprintf(path, "/tmp/%s.pid", InitArg->RoleName);
+    sprintf(path, "/run/%s.pid", InitArg->RoleName);
     pidFd = MyUtil_OpenPidFile(path);
     if (pidFd < 0)
     {
@@ -556,15 +572,7 @@ CmdLineModuleInit(
             }
             break;
         case MY_CMDLINE_ROLE_CLT:
-            if (InitArg->Argc == 2)
-            {
-                sprintf(cmd, "%s", InitArg->Argv[1]);
-            }
-            else if (InitArg->Argc == 3)
-            {
-                sprintf(cmd, "%s %s", InitArg->Argv[1], InitArg->Argv[2]);
-            }
-            (void)_CmdClient_WorkerFunc(cmd);
+            (void)_CmdClient_WorkerFunc(InitArg->Argv, InitArg->Argc);
             ret = MY_ERR_EXIT_WITH_SUCCESS;
             goto CommonReturn;
         default:

@@ -1,17 +1,9 @@
 #include "include.h"
 #include "myModuleCommon.h"
 #include "myClientServerMsgs.h"
+#include "ClientProc.h"
 
-#define MY_CLIENT_ROLE_NAME                                 "tcpclient"
-#define MY_CLIENT_CONF_ROOT                                 MY_CLIENT_ROLE_NAME".conf"
-
-typedef struct _CLIENT_CONF_PARAM
-{
-    char ServerIp[MY_BUFF_64];
-    MY_LOG_LEVEL LogLevel;
-    char LogFilePath[MY_BUFF_64];
-}
-CLIENT_CONF_PARAM;
+#define MY_CLIENT_WORKER_KEEPALIVE_INTERVAL                             1 // s
 
 typedef struct _CLIENT_WORKER
 {
@@ -32,8 +24,13 @@ static CLIENT_WORKER sg_ClientWorker = {
         .IsRunning = FALSE
     };
 
-static void
-_ClientWorkerExit(
+extern void 
+ClientExit(
+    void
+    );
+
+void
+ClientProcExit(
     void
     )
 {
@@ -43,16 +40,6 @@ _ClientWorkerExit(
         pthread_join(*sg_ClientWorker.Thread, NULL);
         sg_ClientWorker.Thread = NULL;
     }
-}
-
-static void 
-_ClientExit(
-    void
-    )
-{
-    _ClientWorkerExit();
-    MyModuleCommonExit();
-    system("killall "MY_CLIENT_ROLE_NAME);
 }
 
 static int
@@ -77,9 +64,9 @@ _ClientCreateFd(
         goto CommonReturn;
     }
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
+    
     timeout.tv_sec = 5;
     timeout.tv_usec = 0;
-
     if (setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
     {
         ret = errno;
@@ -128,16 +115,15 @@ _ClientRecvMsg(
     ret = RecvMsg(Fd, &msg);
     if (ret == MY_SUCCESS)
     {
-        printf("<<<< RecvMsg: %s\n", (char*)msg.Cont.VarLenCont);
+        printf("<<<< RecvMsg: \n%s\n", (char*)msg.Cont.VarLenCont);
     }
     else
     {
         printf("Error happen, ret %d:%s\n", ret, My_StrErr(ret));
-        _ClientExit();
+        ClientExit();
     }
 }
 
-#define MY_CLIENT_WORKER_KEEPALIVE_INTERVAL                             1 // s
 void
 _ClientKeepalive(
     evutil_socket_t Fd,
@@ -152,7 +138,7 @@ _ClientKeepalive(
 }
 
 void*
-_ClientWorkerProc(
+_ClientProcFn(
     void* Arg
     )
 {
@@ -222,191 +208,22 @@ CommonReturn:
     return NULL;
 }
 
-static int 
-_ClientParseConf(
-    CLIENT_CONF_PARAM *ClientConf
+static BOOL
+_ClientCmdFilter(
+    char* cmd
     )
 {
-    int ret = 0;
-    FILE *fp = NULL;
-    char line[MY_BUFF_128] = {0};
-    char *ptr = NULL;
-    int len = 0;
-
-    fp = fopen(MY_CLIENT_CONF_ROOT, "r");
-    if (!fp)
+    BOOL notSupport = FALSE;
+    if (strcasecmp(cmd, MY_DISCONNECT_STRING) == 0)
     {
-        ret = MY_EIO;
-        goto CommonReturn;
-    }
-    while(fgets(line, sizeof(line), fp) != NULL)
-    {
-        if (line[0] == '#')
-        {
-            continue;
-        }
-        else if ((ptr = strstr(line, "ServerIp=")) != NULL)
-        {
-            len = snprintf(ClientConf->ServerIp, sizeof(ClientConf->ServerIp), "%s", ptr + strlen("ServerIp="));
-            if (len <= 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid ServerIp %s!", ptr + strlen("ServerIp="));
-                goto CommonReturn;
-            }
-            if ('\n' == ClientConf->ServerIp[len - 1])
-            {
-                ClientConf->ServerIp[len - 1] = '\0';
-            }
-        }
-        else if ((ptr = strstr(line, "LogLevel=")) != NULL)
-        {
-            ClientConf->LogLevel = atoi(ptr + strlen("LogLevel="));
-            if (!(ClientConf->LogLevel >= MY_LOG_LEVEL_INFO && ClientConf->LogLevel <= MY_LOG_LEVEL_ERROR))
-            {
-                ret = MY_EIO;
-                LogErr("Invalid loglevel!");
-                goto CommonReturn;
-            }
-        }
-        else if ((ptr = strstr(line, "LogPath=")) != NULL)
-        {
-            len = snprintf(ClientConf->LogFilePath, sizeof(ClientConf->LogFilePath), "%s", ptr + strlen("LogPath="));
-            if (len <= 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid LogPath %s!", ptr + strlen("LogPath="));
-                goto CommonReturn;
-            }
-            if ('\n' == ClientConf->LogFilePath[len - 1])
-            {
-                ClientConf->LogFilePath[len - 1] = '\0';
-            }
-        }
-        memset(line, 0, sizeof(line));
+        notSupport = TRUE;
     }
 
-CommonReturn:
-    if (fp)
-    {
-        fclose(fp);
-    }
-    return ret;
-}
-
-static int 
-_ClientWorkerInit(
-    CLIENT_CONF_PARAM *ClientConfParam
-    )
-{
-    int ret = MY_SUCCESS;
-    int sleepIntervalUs = 10;
-    int waitTimeUs = sleepIntervalUs * 1000; // 10 ms
-    
-    if (!ClientConfParam)
-    {
-        ret = MY_EINVAL;
-        goto CommonReturn;
-    }
-
-    if (sg_ClientWorker.ClientFd != -1 && sg_ClientWorker.Thread && 
-        sg_ClientWorker.EventBase && sg_ClientWorker.RecvEvent)
-    {
-        goto CommonReturn;
-    }
-
-    sg_ClientWorker.Thread = (pthread_t*)MyCalloc(sizeof(pthread_t));
-    if (!sg_ClientWorker.Thread)
-    {
-        ret = MY_ENOMEM;
-        LogErr("Apply memory failed!");
-        goto CommonReturn;
-    }
-    ret = pthread_create(sg_ClientWorker.Thread, NULL, _ClientWorkerProc, (void*)ClientConfParam);
-    if (ret) 
-    {
-        LogErr("Failed to create thread");
-        goto CommonReturn;
-    }
-
-    while(!sg_ClientWorker.IsRunning && waitTimeUs >= 0)
-    {
-        usleep(sleepIntervalUs);
-        waitTimeUs -= sleepIntervalUs;
-    }
-
-CommonReturn:
-    return ret;
-}
-    
-static int
-_ClientInit(
-    int argc,
-    char *argv[]
-    )
-{
-    int ret = 0;
-    MY_MODULES_INIT_PARAM initParam;
-    CLIENT_CONF_PARAM clientConfParam;
-    
-    UNUSED(argc);
-    UNUSED(argv);
-    memset(&initParam, 0, sizeof(initParam));
-    memset(&clientConfParam, 0, sizeof(clientConfParam));
-
-    ret = _ClientParseConf(&clientConfParam);
-    if (ret)
-    {
-        LogErr("Init conf failed!");
-        goto CommonReturn;
-    }
-
-    initParam.HealthArg = NULL;
-    initParam.InitTimerModule = FALSE;
-    initParam.CmdLineArg = NULL;
-    initParam.TPoolArg = NULL;
-    initParam.InitMsgModule = TRUE;
-    initParam.LogArg = (MY_LOG_MODULE_INIT_ARG*)calloc(sizeof(MY_LOG_MODULE_INIT_ARG), 1);
-    if (!initParam.LogArg)
-    {
-        LogErr("Apply mem failed!");
-        goto CommonReturn;
-    }
-    // log init args
-    initParam.LogArg->LogFilePath = clientConfParam.LogFilePath;
-    initParam.LogArg->LogLevel = clientConfParam.LogLevel;
-    initParam.LogArg->RoleName = MY_CLIENT_ROLE_NAME;
-    ret = MyModuleCommonInit(initParam);
-    if (ret)
-    {
-        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
-        {
-            LogErr("MyModuleCommonInit failed!");
-        }
-        goto CommonReturn;
-    }
-
-    ret = _ClientWorkerInit(&clientConfParam);
-    if (ret)
-    {
-        LogErr("_ClientWorkerInit failed! ret %d:%s", ret, My_StrErr(ret));
-        goto CommonReturn;
-    }
-    
-CommonReturn:
-    if (initParam.LogArg)
-    {
-        free(initParam.LogArg);
-    }
-    if (initParam.TPoolArg)
-    {
-        free(initParam.TPoolArg);
-    }
-    return ret;
+    return notSupport;
 }
 
 void
-_ClientMainLoop(
+ClientProcMainLoop(
     void
     )
 {
@@ -429,7 +246,8 @@ _ClientMainLoop(
         fgets(buf, bufLen, stdin);
         *(strchr(buf, '\n')) = '\0';
         inputLen = strnlen(buf, MY_MSG_CONTENT_MAX_LEN - 1) + 1;
-        if (strcasecmp(buf, MY_DISCONNECT_STRING) == 0)
+
+        if (!_ClientCmdFilter(buf))
         {
             break;
         }
@@ -440,6 +258,7 @@ _ClientMainLoop(
             goto CommonReturn;
         }
 
+        msgToSend->Head.Type = MY_MSG_TYPE_EXEC_CMD;
         ret = FillMsgCont(msgToSend, buf, inputLen);
         if (ret)
         {
@@ -466,29 +285,48 @@ CommonReturn:
     return ;
 }
 
-int main(
-    int argc,
-    char *argv[]
+int
+ClientProcInit(
+    CLIENT_CONF_PARAM *ClientConfParam
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
+    int sleepIntervalUs = 10;
+    int waitTimeUs = sleepIntervalUs * 1000; // 10 ms
     
-    ret = _ClientInit(argc, argv);
-    if (ret)
+    if (!ClientConfParam)
     {
-        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
-        {
-            printf("Client init failed! ret %d", ret);
-        }
+        ret = MY_EINVAL;
         goto CommonReturn;
     }
 
-    _ClientMainLoop();
+    if (sg_ClientWorker.ClientFd != -1 && sg_ClientWorker.Thread && 
+        sg_ClientWorker.EventBase && sg_ClientWorker.RecvEvent)
+    {
+        goto CommonReturn;
+    }
+
+    sg_ClientWorker.Thread = (pthread_t*)MyCalloc(sizeof(pthread_t));
+    if (!sg_ClientWorker.Thread)
+    {
+        ret = MY_ENOMEM;
+        LogErr("Apply memory failed!");
+        goto CommonReturn;
+    }
+    ret = pthread_create(sg_ClientWorker.Thread, NULL, _ClientProcFn, (void*)ClientConfParam);
+    if (ret) 
+    {
+        LogErr("Failed to create thread");
+        goto CommonReturn;
+    }
+
+    while(!sg_ClientWorker.IsRunning && waitTimeUs >= 0)
+    {
+        usleep(sleepIntervalUs);
+        waitTimeUs -= sleepIntervalUs;
+    }
     
 CommonReturn:
-    if (ret != MY_ERR_EXIT_WITH_SUCCESS)
-    {
-        _ClientExit();
-    }
     return ret;
 }
+
