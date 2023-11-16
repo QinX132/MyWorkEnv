@@ -175,7 +175,7 @@ RecvMsg(
     recvLogLen += len;
     // recv content
     recvLen = RetMsg->Head.ContentLen;
-    if (unlikely(recvLen > (int)sizeof(MY_MSG_CONT)))
+    if (UNLIKELY(recvLen > (int)sizeof(MY_MSG_CONT)))
     {
         LogErr("Too long cont len %u", RetMsg->Head.ContentLen);
         ret = EINVAL;

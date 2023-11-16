@@ -5,6 +5,8 @@
 extern "C"{
 #endif
 
+#include "myModuleCommon.h"
+
 typedef struct _CLIENT_CONF_PARAM
 {
     char ServerIp[MY_BUFF_64];

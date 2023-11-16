@@ -12,10 +12,12 @@ SRC_FILES +=	$(UTILS_ROOT)/myCommonUtil.c $(UTILS_ROOT)/myModuleCommon.c \
 				$(UTILS_ROOT)/Mem/myMem.c \
 				$(UTILS_ROOT)/Msg/myMsg.c \
 				$(UTILS_ROOT)/TPool/myThreadPool.c \
-				$(UTILS_ROOT)/Timer/myTimer.c
+				$(UTILS_ROOT)/Timer/myTimer.c \
+				$(UTILS_ROOT)/SafetyManager/mySafetyManager.c
 
 CFLAGS	+= 	-I$(UTILS_ROOT)/../include/ \
-            -I$(THIRD_PARTY_ROOT)/libevent/include/
+            -I$(THIRD_PARTY_ROOT)/libevent/include/ \
+			-I$(THIRD_PARTY_ROOT)/GmSSL/include
 
 CFLAGS	+= -Wall -fPIC -Wextra -g
 

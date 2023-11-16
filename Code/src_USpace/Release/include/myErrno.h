@@ -143,10 +143,6 @@ extern "C"{
 #define MY_ERFKILL              ERFKILL         /* Operation not possible due to RF-kill */
 #define MY_EHWPOISON            EHWPOISON       /* Memory page has hardware error */
 
-
-#ifndef _MY_ERR_NO_ENUM_AND_STRING_
-#define _MY_ERR_NO_ENUM_AND_STRING_
-
 typedef enum _MY_ERR_NO_ENUM
 {
     MY_ERR_NO_START             = 255,
@@ -172,10 +168,9 @@ My_StrErr(
     return Errno < MY_ERR_NO_START && Errno >= 0 ? strerror(Errno) : 
             (Errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[Errno - MY_ERR_NO_START] : "UnknownErr");
 }
-#endif /* _MY_ERR_NO_ENUM_AND_STRING_ */
 
 #ifdef __cplusplus
  }
 #endif
 
-#endif
+#endif /* _MY_ERRNO_H_ */

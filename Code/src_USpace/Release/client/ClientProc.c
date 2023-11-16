@@ -1,5 +1,4 @@
 #include "include.h"
-#include "myModuleCommon.h"
 #include "myClientServerMsgs.h"
 #include "ClientProc.h"
 
@@ -181,6 +180,7 @@ _ClientProcFn(
     event_add(sg_ClientWorker.Keepalive, &tv);
     event_active(sg_ClientWorker.Keepalive, EV_READ, 0);
     sg_ClientWorker.IsRunning = TRUE;
+    
     event_base_dispatch(sg_ClientWorker.EventBase);
 
 CommonReturn:

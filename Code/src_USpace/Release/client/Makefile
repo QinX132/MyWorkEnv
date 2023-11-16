@@ -1,25 +1,24 @@
-CC = gcc
+CC	=	gcc
 
+TARGET				=	QinXClient
 WORK_ROOT			=	.
 UTILS_ROOT			= 	$(WORK_ROOT)/../myUtils
 THIRD_PARTY_ROOT	= 	$(WORK_ROOT)/../../third_party
 
 SRC_FILE	+=	$(WORK_ROOT)/QinXClientMain.c \
 				$(WORK_ROOT)/ClientProc.c
-
 OBJ_FILE	:= $(SRC_FILE:.c=.o) 
 
 CFLAGS	+=	-I$(WORK_ROOT)/../include/ \
 			-I$(WORK_ROOT)/include/ \
-			-I$(THIRD_PARTY_ROOT)/libevent/include/ 
-
+			-I$(THIRD_PARTY_ROOT)/libevent/include/ \
+			-I$(THIRD_PARTY_ROOT)/GmSSL/include/
 CFLAGS	+=	-Wall -Wextra -g
 
 LDFLAGS +=	-L$(UTILS_ROOT) -lmyUtils
-LDFLAGS +=	-L$(THIRD_PARTY_ROOT)/libevent/lib/ -levent
+LDFLAGS +=	-L$(THIRD_PARTY_ROOT)/libevent/lib/ -levent \
+			-L$(THIRD_PARTY_ROOT)/GmSSL/lib/ -lgmssl
 LDFLAGS +=	-pthread
-
-TARGET	=	QinXClient
 
 all: $(TARGET)
 

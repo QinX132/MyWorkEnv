@@ -125,7 +125,7 @@ _ServerMsgExecCmd(
 
     arg = (SERVER_EXEC_CMD_ARG *)MyCalloc(sizeof(SERVER_EXEC_CMD_ARG));
     msg = NewMsg();
-    if (likely(arg && msg && Msg))
+    if (LIKELY(arg && msg && Msg))
     {
         memcpy(msg, Msg, sizeof(MY_MSG));
         arg->Msg = msg;

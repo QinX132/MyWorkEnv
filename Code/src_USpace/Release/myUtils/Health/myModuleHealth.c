@@ -53,36 +53,6 @@ _HealthFree(
     return MemFree(sg_HealthModId, Ptr);
 }
 
-static
-void
-_HealthEventLogCallBack(
-    int Severity,
-    const char *Msg
-    )
-{
-    if (Msg)
-    {
-        switch (Severity)
-        {
-            case _EVENT_LOG_DEBUG:
-                /* Ignore massive debug logs*/
-                break;
-            case _EVENT_LOG_MSG:
-                LogInfo("[LibEvent] %s\n", Msg);
-                break;
-            case _EVENT_LOG_WARN:
-                LogWarn("[LibEvent] %s\n", Msg);
-                break;
-            case _EVENT_LOG_ERR:
-                LogErr("[LibEvent] %s\n", Msg);
-                break;
-            default:
-                LogErr("[LibEvent] %s\n", Msg);
-                break; /* never reached */
-        }
-    }
-}
-
 #define MY_HEALTH_MONITOR_KEEPALIVE_INTERVAL                1 // s
 void
 _HealthMonitorKeepalive(
@@ -142,9 +112,7 @@ _HealthModuleEntry(
     {
         goto CommonReturn;
     }
-    (void)event_enable_debug_logging(FALSE);
-    (void)event_set_log_callback(_HealthEventLogCallBack);
-    // keep alive
+    // keepalive
     node = (MY_HEALTH_MONITOR_LIST_NODE*)_HealthCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
     if (!node)
     {
