@@ -21,7 +21,7 @@ MyUtil_IsProcessRunning(
     int Fd
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
 
     /*lock pid file*/
     ret = flock(Fd, LOCK_EX | LOCK_NB);
@@ -48,7 +48,7 @@ MyUtil_SetPidIntoFile(
     int Fd
     )
 {
-    int32_t ret = 0;
+    int32_t ret = MY_SUCCESS;
     char buf[MY_BUFF_32] = {0};
     ssize_t len = 0;
 
@@ -57,7 +57,7 @@ MyUtil_SetPidIntoFile(
     len = write(Fd, buf, strlen(buf) + 1);
     if (len != (ssize_t)(strlen(buf) + 1))
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
     
@@ -91,13 +91,13 @@ MyUtil_GetCpuTime(
     fp = fopen("/proc/stat", "r");
     if (!fp || !TotalTime || !IdleTime) 
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
 
     if (fscanf(fp, "cpu %llu %llu %llu %llu", &user, &nice, &system, &idle) != 4) 
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
 

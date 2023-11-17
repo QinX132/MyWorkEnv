@@ -44,12 +44,12 @@ MemRegister(
     char *Name
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int loop = 0;
     BOOL registered = FALSE;
     if (!Name || !MemId || !sg_MemWorker.Inited)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
     if (*MemId >= 0 && *MemId < MY_MEM_MODULE_MAX_NUM && 
@@ -79,7 +79,7 @@ MemRegister(
     pthread_spin_unlock(&sg_MemWorker.Lock);
     if (!registered)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         goto CommonReturn;
     }
 CommonReturn:
@@ -98,7 +98,7 @@ MemUnRegister(
         pthread_spin_lock(&sg_MemWorker.Lock);
         if (!MemLeakSafetyCheckWithId(*MemId))
         {
-            ret = MY_ERR_EXIT_WITH_SUCCESS;
+            ret = -MY_ERR_EXIT_WITH_SUCCESS;
         }
         memset(&sg_MemWorker.Nodes[*MemId], 0, sizeof(MY_MEM_NODE));
         *MemId = MY_MEM_MODULE_INVALID_ID;
@@ -146,14 +146,14 @@ MemModuleCollectStat(
     int* Offset
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int len = 0;
     int loop = 0;
 
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, "<%s:", ModuleNameByEnum(MY_MODULES_ENUM_MEM));
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Too long Msg!");
         goto CommonReturn;
     }
@@ -174,7 +174,7 @@ MemModuleCollectStat(
                 sg_MemWorker.Nodes[loop].MemBytesAlloced - sg_MemWorker.Nodes[loop].MemBytesFreed);
         if (len < 0 || len >= BuffMaxLen - *Offset)
         {
-            ret = MY_ENOMEM;
+            ret = -MY_ENOMEM;
             LogErr("Too long Msg!");
             goto CommonReturn;
         }
@@ -186,7 +186,7 @@ MemModuleCollectStat(
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, ">");
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Too long Msg!");
         goto CommonReturn;
     }

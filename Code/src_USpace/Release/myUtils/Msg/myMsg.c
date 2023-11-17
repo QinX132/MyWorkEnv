@@ -80,7 +80,7 @@ MsgModuleCollectStat(
     int* Offset
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int len = 0;
     
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
@@ -89,7 +89,7 @@ MsgModuleCollectStat(
         sg_MsgStats.MsgSendFailed, sg_MsgStats.MsgRecv, sg_MsgStats.MsgRecvBytes, sg_MsgStats.MsgRecvFailed);
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Too long Msg!");
         goto CommonReturn;
     }
@@ -108,7 +108,7 @@ RecvMsg(
     __inout MY_MSG *RetMsg
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int recvLen = 0;
     int currentLen = 0;
     int recvRet = 0;
@@ -123,7 +123,7 @@ RecvMsg(
 
     if (!RetMsg)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         LogErr("NULL ptr!");
         goto CommonReturn;
     }
@@ -144,7 +144,7 @@ RecvMsg(
         }
         else if (recvRet == 0)
         {
-            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            ret = -MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -156,7 +156,7 @@ RecvMsg(
             }
             else
             {
-                ret = errno;
+                ret = -errno;
                 LogErr("recvRet = %d, %d:%s", recvRet, errno, My_StrErr(errno));
                 goto CommonReturn;
             }
@@ -168,7 +168,7 @@ RecvMsg(
                 RetMsg->Head.IsMsgEnd);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
-        ret = MY_ENOBUFS;
+        ret = -MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
@@ -194,7 +194,7 @@ RecvMsg(
         }
         else if (recvRet == 0)
         {
-            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            ret = -MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -206,7 +206,7 @@ RecvMsg(
             }
             else
             {
-                ret = errno;
+                ret = -errno;
                 LogErr("recvRet = %d, %d:%s", recvRet, errno, My_StrErr(errno));
                 goto CommonReturn;
             }
@@ -216,7 +216,7 @@ RecvMsg(
                 "VarLenCont=\"%s\" ", RetMsg->Cont.VarLenCont);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
-        ret = MY_ENOBUFS;
+        ret = -MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
@@ -236,7 +236,7 @@ RecvMsg(
         }
         else if (recvRet == 0)
         {
-            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            ret = -MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -248,7 +248,7 @@ RecvMsg(
             }
             else
             {
-                ret = errno;
+                ret = -errno;
                 LogErr("recvRet = %d, %d:%s", recvRet, errno, My_StrErr(errno));
                 goto CommonReturn;
             }
@@ -258,7 +258,7 @@ RecvMsg(
                 "TimeStamp=%llu", RetMsg->Tail.TimeStamp);
     if (len >= sizeof(recvLogBuff) - recvLogLen)
     {
-        ret = MY_ENOBUFS;
+        ret = -MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
@@ -269,7 +269,7 @@ CommonReturn:
     if (sg_MsgStats.Inited)
     {
         pthread_spin_lock(&sg_MsgStats.Lock);
-        if (ret != 0 && ret != MY_ERR_PEER_CLOSED)
+        if (ret != 0 && ret != -MY_ERR_PEER_CLOSED)
         {
             sg_MsgStats.MsgRecvFailed ++;
         }
@@ -359,7 +359,7 @@ SendMsg(
         }
         else if (sendRet == 0)
         {
-            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            ret = -MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -369,6 +369,7 @@ SendMsg(
                 // should retry
                 continue;
             }
+            ret = -errno;
             LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
@@ -379,7 +380,7 @@ SendMsg(
                 Msg->Head.IsMsgEnd);
     if (len >= sizeof(sendLogBuff) - sendLogLen)
     {
-        ret = MY_ENOBUFS;
+        ret = -MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
@@ -399,7 +400,7 @@ SendMsg(
         }
         else if (sendRet == 0)
         {
-            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            ret = -MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -409,6 +410,7 @@ SendMsg(
                 // should retry
                 continue;
             }
+            ret = -errno;
             LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
@@ -417,7 +419,7 @@ SendMsg(
                 "VarLenCont=\"%s\" ", Msg->Cont.VarLenCont);
     if (len >= sizeof(sendLogBuff) - sendLogLen)
     {
-        ret = MY_ENOBUFS;
+        ret = -MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
@@ -437,7 +439,7 @@ SendMsg(
         }
         else if (sendRet == 0)
         {
-            ret = MY_ERR_PEER_CLOSED; // peer close connection
+            ret = -MY_ERR_PEER_CLOSED; // peer close connection
             goto CommonReturn;
         }
         else
@@ -447,6 +449,7 @@ SendMsg(
                 // should retry
                 continue;
             }
+            ret = -errno;
             LogErr("Send failed %d:%s", errno, My_StrErr(errno));
             goto CommonReturn;
         }
@@ -455,7 +458,7 @@ SendMsg(
                 "TimeStamp=%llu", Msg->Tail.TimeStamp);
     if (len >= sizeof(sendLogBuff) - sendLogLen)
     {
-        ret = MY_ENOBUFS;
+        ret = -MY_ENOBUFS;
         LogErr("Too long msg!");
         goto CommonReturn;
     }
@@ -491,13 +494,13 @@ FillMsgCont(
     int ret = MY_SUCCESS;
     if (!Msg || !FillCont || !FillContLen)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
 
     if (FillContLen >= sizeof(Msg->Cont.VarLenCont) - Msg->Head.ContentLen)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         goto CommonReturn;
     }
 

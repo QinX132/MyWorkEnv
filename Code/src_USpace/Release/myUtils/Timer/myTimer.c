@@ -201,7 +201,7 @@ TimerAdd(
         !Cb ||
         (!TimerHandle && TimerType == MY_TIMER_TYPE_LOOP))
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
 
@@ -268,7 +268,7 @@ TimerModuleCollectStat(
     int* Offset
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     MY_TIMER_EVENT_NODE *tmp = NULL, *loop = NULL;
     int len = 0;
 
@@ -282,7 +282,7 @@ TimerModuleCollectStat(
                 "[Handle:%p, Cb:%p, Arg:%p, IntervalMs:%u]", loop, loop->Cb, loop->Arg, loop->IntervalMs);
             if (len < 0 || len >= BuffMaxLen - *Offset - len)
             {
-                ret = MY_ENOMEM;
+                ret = -MY_ENOMEM;
                 LogErr("Too long Msg!");
                 goto CommonReturn;
             }

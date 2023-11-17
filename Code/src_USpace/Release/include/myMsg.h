@@ -13,10 +13,10 @@ extern "C"{
 typedef struct _MY_MSG_HEAD{
     uint8_t VerMagic;
     uint8_t IsMsgEnd;
-    uint16_t ContentLen;
-    uint32_t SessionId;
     uint16_t Type;
-    uint8_t Reserved[30];
+    uint32_t ContentLen;
+    uint32_t SessionId;
+    uint8_t Reserved[28];
 }
 MY_MSG_HEAD;
 

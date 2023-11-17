@@ -1,6 +1,7 @@
 #include "include.h"
 #include "myModuleCommon.h"
 #include "ServerProc.h"
+#include "ServerMonitor.h"
 
 #define MY_SERVER_ROLE_NAME                                 "QinXServer"
 #define MY_SERVER_CONF_ROOT                                 MY_SERVER_ROLE_NAME".conf"
@@ -9,6 +10,8 @@ typedef struct _SERVER_CONF_PARAM
 {
     MY_LOG_LEVEL LogLevel;
     char LogFilePath[MY_BUFF_64];
+    int LogMaxSize;
+    int LogMaxNum;
     MY_HEALTH_MODULE_INIT_ARG HealthArg;
     MY_TPOOL_MODULE_INIT_ARG TPoolArg;
 }
@@ -19,7 +22,7 @@ _ServerParseConf(
     SERVER_CONF_PARAM *ServerConf
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     FILE *fp = NULL;
     char line[MY_BUFF_128] = {0};
     char *ptr = NULL;
@@ -28,7 +31,7 @@ _ServerParseConf(
     fp = fopen(MY_SERVER_CONF_ROOT, "r");
     if (!fp)
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
     while(fgets(line, sizeof(line), fp) != NULL)
@@ -42,7 +45,7 @@ _ServerParseConf(
             ServerConf->LogLevel = atoi(ptr + strlen("LogLevel="));
             if (!(ServerConf->LogLevel >= MY_LOG_LEVEL_INFO && ServerConf->LogLevel <= MY_LOG_LEVEL_ERROR))
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid loglevel!");
                 goto CommonReturn;
             }
@@ -52,7 +55,7 @@ _ServerParseConf(
             len = snprintf(ServerConf->LogFilePath, sizeof(ServerConf->LogFilePath), "%s", ptr + strlen("LogPath="));
             if (!len)
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid logPath %s!", ptr + strlen("LogPath="));
                 goto CommonReturn;
             }
@@ -61,76 +64,54 @@ _ServerParseConf(
                 ServerConf->LogFilePath[len - 1] = '\0';
             }
         }
+        else if ((ptr = strstr(line, "LogMaxSize=")) != NULL)
+        {
+            ServerConf->LogMaxSize = atoi(ptr + strlen("LogMaxSize=")) * 1024 * 1024;
+            if (ServerConf->LogMaxSize <= 0)
+            {
+                ret = -MY_EIO;
+                LogErr("Invalid LogMaxSize!");
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "LogMaxNum=")) != NULL)
+        {
+            ServerConf->LogMaxNum = atoi(ptr + strlen("LogMaxNum="));
+            if (ServerConf->LogMaxNum <= 0)
+            {
+                ret = -MY_EIO;
+                LogErr("Invalid LogMaxNum!");
+                goto CommonReturn;
+            }
+        }
         else if ((ptr = strstr(line, "LogHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.LogHealthIntervalS = atoi(ptr + strlen("LogHealthIntervalS="));
-            if (ServerConf->HealthArg.LogHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid LogHealthIntervalS %d!", ServerConf->HealthArg.LogHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         // module health check
         else if ((ptr = strstr(line, "MsgHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.MsgHealthIntervalS = atoi(ptr + strlen("MsgHealthIntervalS="));
-            if (ServerConf->HealthArg.MsgHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid MsgHealthIntervalS %d!", ServerConf->HealthArg.MsgHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         else if ((ptr = strstr(line, "TPoolHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.TPoolHealthIntervalS = atoi(ptr + strlen("TPoolHealthIntervalS="));
-            if (ServerConf->HealthArg.TPoolHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid TPoolHealthIntervalS %d!", ServerConf->HealthArg.TPoolHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         else if ((ptr = strstr(line, "CmdLineHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.CmdLineHealthIntervalS = atoi(ptr + strlen("CmdLineHealthIntervalS="));
-            if (ServerConf->HealthArg.CmdLineHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid CmdLineHealthIntervalS %d!", ServerConf->HealthArg.CmdLineHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         else if ((ptr = strstr(line, "MHHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.MHHealthIntervalS = atoi(ptr + strlen("MHHealthIntervalS="));
-            if (ServerConf->HealthArg.MHHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid MHHealthIntervalS %d!", ServerConf->HealthArg.MHHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         else if ((ptr = strstr(line, "MemHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.MemHealthIntervalS = atoi(ptr + strlen("MemHealthIntervalS="));
-            if (ServerConf->HealthArg.MemHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid MemHealthIntervalS %d!", ServerConf->HealthArg.MemHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         else if ((ptr = strstr(line, "TimerHealthIntervalS=")) != NULL)
         {
             ServerConf->HealthArg.TimerHealthIntervalS = atoi(ptr + strlen("TimerHealthIntervalS="));
-            if (ServerConf->HealthArg.TimerHealthIntervalS < 0)
-            {
-                ret = MY_EIO;
-                LogErr("Invalid TimerHealthIntervalS %d!", ServerConf->HealthArg.TimerHealthIntervalS);
-                goto CommonReturn;
-            }
         }
         // TPool param
         else if ((ptr = strstr(line, "TPoolSize=")) != NULL)
@@ -138,7 +119,7 @@ _ServerParseConf(
             ServerConf->TPoolArg.ThreadPoolSize = atoi(ptr + strlen("TPoolSize="));
             if (ServerConf->TPoolArg.ThreadPoolSize < 0)
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid TPoolSize %d!", ServerConf->TPoolArg.ThreadPoolSize);
                 goto CommonReturn;
             }
@@ -148,7 +129,7 @@ _ServerParseConf(
             ServerConf->TPoolArg.Timeout = atoi(ptr + strlen("TPoolDefaultTimeout="));
             if (ServerConf->TPoolArg.Timeout < 0)
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid TPoolDefaultTimeout %d!", ServerConf->TPoolArg.Timeout);
                 goto CommonReturn;
             }
@@ -158,7 +139,7 @@ _ServerParseConf(
             ServerConf->TPoolArg.TaskListMaxLength = atoi(ptr + strlen("TPoolTaskQueueMaxLength="));
             if (ServerConf->TPoolArg.TaskListMaxLength < 0)
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid TaskListMaxLength %d!", ServerConf->TPoolArg.TaskListMaxLength);
                 goto CommonReturn;
             }
@@ -188,17 +169,76 @@ _ServerExit(
 }
 
 static int
+_ServerCmdRegister(
+    void
+    )
+{
+    int ret = MY_SUCCESS;
+    MY_CMD_EXTERNAL_CONT cont;
+
+// add proc stats
+    snprintf(cont.Opt, sizeof(cont.Opt), "ShowServerProcStat");
+    snprintf(cont.Help, sizeof(cont.Help), "show current connected clients info");
+    cont.Argc = 2;
+    cont.Cb = ServerProcCmdShowStats;
+    ret = CmdExternalRegister(cont);
+    if (ret)
+    {
+        LogErr("Cmd Register failed!");
+        goto CommonReturn;
+    }
+// monitor : cpuusgae warning value
+    snprintf(cont.Opt, sizeof(cont.Opt), "SetServerCpuUsageWarningValue");
+    snprintf(cont.Help, sizeof(cont.Help), "<PERSENT %%> Set server cpuusage warning value");
+    cont.Argc = 3;
+    cont.Cb = ServerMonitorCmdSetCpuWarn;
+    ret = CmdExternalRegister(cont);
+    if (ret)
+    {
+        LogErr("Cmd Register failed!");
+        goto CommonReturn;
+    }
+CommonReturn:
+    return ret;
+}
+
+static int
+_ServerHealthRegister(
+    void
+    )
+{
+    int ret = MY_SUCCESS;
+
+    ret = HealthMonitorAdd(ServerCpuUsageMonitor, "CpuUsageMonitor", SERVER_DEFAULT_CPU_USAGE_MONITOR_INTERVAL_S);
+    if (ret)
+    {
+        LogErr("Cmd Register failed!");
+        goto CommonReturn;
+    }
+
+CommonReturn:
+    return ret;
+}
+
+static int
 _ServerInit(
     int argc,
     char *argv[]
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     MY_MODULES_INIT_PARAM initParam;
     SERVER_CONF_PARAM serverConf;
     
     memset(&initParam, 0, sizeof(initParam));
     memset(&serverConf, 0, sizeof(serverConf));
+
+    ret = _ServerCmdRegister();
+    if (ret)
+    {
+        LogErr("Cmd register failed!");
+        goto CommonReturn;
+    }
 
     ret = _ServerParseConf(&serverConf);
     if (ret)
@@ -227,12 +267,14 @@ _ServerInit(
     initParam.LogArg->LogFilePath = serverConf.LogFilePath;
     initParam.LogArg->LogLevel = serverConf.LogLevel;
     initParam.LogArg->RoleName = MY_SERVER_ROLE_NAME;
+    initParam.LogArg->LogMaxSize = serverConf.LogMaxSize;
+    initParam.LogArg->LogMaxNum = serverConf.LogMaxNum;
     // tpool init args
     initParam.TPoolArg = &serverConf.TPoolArg;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {
-        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        if (-MY_ERR_EXIT_WITH_SUCCESS != ret)
         {
             LogErr("MyModuleCommonInit failed!");
         }
@@ -245,6 +287,12 @@ _ServerInit(
         LogErr("ServerProc init Failed!");
         goto CommonReturn;
     }
+    ret = _ServerHealthRegister();
+    if (ret)
+    {
+        LogErr("Server Health register Failed!");
+        goto CommonReturn;
+    }
 CommonReturn:
     if (initParam.LogArg)
     {
@@ -254,7 +302,7 @@ CommonReturn:
     {
         free(initParam.CmdLineArg);
     }
-    if (ret && MY_ERR_EXIT_WITH_SUCCESS != ret)
+    if (ret && -MY_ERR_EXIT_WITH_SUCCESS != ret)
     {
         ServerProcExit();
         MyModuleCommonExit();
@@ -268,11 +316,11 @@ main(
     char *argv[]
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     ret = _ServerInit(argc, argv);
     if (ret)
     {
-        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        if (-MY_ERR_EXIT_WITH_SUCCESS != ret)
         {
             LogErr("Server init failed! ret %d", ret);
         }

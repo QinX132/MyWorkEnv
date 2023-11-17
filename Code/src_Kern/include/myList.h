@@ -7,6 +7,8 @@ typedef struct _MY_LIST_NODE{
 }
 MY_LIST_NODE;
 
+#define MY_LIST_NODE_INIT_VALUE(_NODE_)         {.Prev = &(_NODE_), .Next = &(_NODE_)}
+
 #define MY_LIST_NODE_INIT(_NODE_)  \
         do{ \
             (_NODE_)->Prev = (_NODE_); \

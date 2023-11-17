@@ -48,8 +48,7 @@ MyModuleCommonInit(
     MY_MODULES_INIT_PARAM ModuleInitParam 
     )
 {
-    int ret = 0;
-
+    int ret = MY_SUCCESS;
     
     if (ModuleInitParam.LogArg)
     {
@@ -81,7 +80,7 @@ MyModuleCommonInit(
         ret = CmdLineModuleInit(ModuleInitParam.CmdLineArg);
         if (ret)
         {
-            if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+            if (-MY_ERR_EXIT_WITH_SUCCESS != ret)
             {
                 LogErr("Cmd line init failed! %d %s", ret, My_StrErr(ret));
             }

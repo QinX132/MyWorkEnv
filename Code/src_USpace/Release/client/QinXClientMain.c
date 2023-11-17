@@ -2,7 +2,6 @@
 #include "myModuleCommon.h"
 #include "ClientProc.h"
 
-#define MY_CLIENT_ROLE_NAME                                 "QinXClient"
 #define MY_CLIENT_CONF_ROOT                                 MY_CLIENT_ROLE_NAME".conf"
 
 void 
@@ -20,7 +19,7 @@ _ClientParseConf(
     CLIENT_CONF_PARAM *ClientConf
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     FILE *fp = NULL;
     char line[MY_BUFF_128] = {0};
     char *ptr = NULL;
@@ -29,7 +28,7 @@ _ClientParseConf(
     fp = fopen(MY_CLIENT_CONF_ROOT, "r");
     if (!fp)
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
     while(fgets(line, sizeof(line), fp) != NULL)
@@ -43,7 +42,7 @@ _ClientParseConf(
             len = snprintf(ClientConf->ServerIp, sizeof(ClientConf->ServerIp), "%s", ptr + strlen("ServerIp="));
             if (len <= 0)
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid ServerIp %s!", ptr + strlen("ServerIp="));
                 goto CommonReturn;
             }
@@ -57,8 +56,28 @@ _ClientParseConf(
             ClientConf->LogLevel = atoi(ptr + strlen("LogLevel="));
             if (!(ClientConf->LogLevel >= MY_LOG_LEVEL_INFO && ClientConf->LogLevel <= MY_LOG_LEVEL_ERROR))
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid loglevel!");
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "LogMaxSize=")) != NULL)
+        {
+            ClientConf->LogMaxSize = atoi(ptr + strlen("LogMaxSize=")) * 1024 * 1024;
+            if (ClientConf->LogMaxSize <= 0)
+            {
+                ret = -MY_EIO;
+                LogErr("Invalid LogMaxSize!");
+                goto CommonReturn;
+            }
+        }
+        else if ((ptr = strstr(line, "LogMaxNum=")) != NULL)
+        {
+            ClientConf->LogMaxNum = atoi(ptr + strlen("LogMaxNum="));
+            if (ClientConf->LogMaxNum <= 0)
+            {
+                ret = -MY_EIO;
+                LogErr("Invalid LogMaxNum!");
                 goto CommonReturn;
             }
         }
@@ -67,7 +86,7 @@ _ClientParseConf(
             len = snprintf(ClientConf->LogFilePath, sizeof(ClientConf->LogFilePath), "%s", ptr + strlen("LogPath="));
             if (len <= 0)
             {
-                ret = MY_EIO;
+                ret = -MY_EIO;
                 LogErr("Invalid LogPath %s!", ptr + strlen("LogPath="));
                 goto CommonReturn;
             }
@@ -93,7 +112,7 @@ _ClientInit(
     char *argv[]
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     MY_MODULES_INIT_PARAM initParam;
     CLIENT_CONF_PARAM clientConfParam;
     
@@ -124,10 +143,12 @@ _ClientInit(
     initParam.LogArg->LogFilePath = clientConfParam.LogFilePath;
     initParam.LogArg->LogLevel = clientConfParam.LogLevel;
     initParam.LogArg->RoleName = MY_CLIENT_ROLE_NAME;
+    initParam.LogArg->LogMaxSize = clientConfParam.LogMaxSize;
+    initParam.LogArg->LogMaxNum = clientConfParam.LogMaxNum;
     ret = MyModuleCommonInit(initParam);
     if (ret)
     {
-        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        if (-MY_ERR_EXIT_WITH_SUCCESS != ret)
         {
             LogErr("MyModuleCommonInit failed!");
         }
@@ -163,12 +184,12 @@ int main(
     char *argv[]
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     
     ret = _ClientInit(argc, argv);
     if (ret)
     {
-        if (MY_ERR_EXIT_WITH_SUCCESS != ret)
+        if (-MY_ERR_EXIT_WITH_SUCCESS != ret)
         {
             printf("Client init failed! ret %d", ret);
         }
@@ -178,7 +199,7 @@ int main(
     ClientProcMainLoop();
     
 CommonReturn:
-    if (ret != MY_ERR_EXIT_WITH_SUCCESS)
+    if (ret != -MY_ERR_EXIT_WITH_SUCCESS)
     {
         ClientExit();
     }

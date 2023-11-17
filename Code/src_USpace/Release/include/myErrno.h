@@ -165,8 +165,11 @@ My_StrErr(
     int Errno
     )
 {
-    return Errno < MY_ERR_NO_START && Errno >= 0 ? strerror(Errno) : 
-            (Errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[Errno - MY_ERR_NO_START] : "UnknownErr");
+    int errno;
+    errno = Errno > 0 ? Errno : -Errno;
+    
+    return errno < MY_ERR_NO_START ? strerror(errno) : 
+            (errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[errno - MY_ERR_NO_START] : "UnknownErr");
 }
 
 #ifdef __cplusplus

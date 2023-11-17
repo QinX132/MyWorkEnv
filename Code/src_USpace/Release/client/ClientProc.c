@@ -50,16 +50,27 @@ _ClientCreateFd(
 {
     int clientFd = -1;
     unsigned int serverIp = 0;
-    int ret = 0;
+    int ret = MY_SUCCESS;
     struct sockaddr_in serverAddr = {0};
+    struct sockaddr_in localAddr = {0};
     int32_t reuseable = 1; // set port reuseable when fd closed
     struct timeval timeout;
 
     clientFd = socket(AF_INET, SOCK_STREAM, 0);
     if(0 > clientFd)
     {
-        ret = errno;
+        ret = -errno;
         LogErr("Create socket failed");
+        goto CommonReturn;
+    }
+    LogInfo("Open clientFd %d", clientFd);
+    localAddr.sin_family = AF_INET;
+    localAddr.sin_port = htons(0);
+    localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
+    if(bind(clientFd, (void *)&localAddr, sizeof(localAddr)))
+    {
+        ret = -errno;
+        LogErr("Bind failed");
         goto CommonReturn;
     }
     (void)setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
@@ -68,7 +79,7 @@ _ClientCreateFd(
     timeout.tv_usec = 0;
     if (setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
     {
-        ret = errno;
+        ret = -errno;
         LogErr("setsockopt failed %d %s", errno, My_StrErr(errno));
         goto CommonReturn;
     }
@@ -76,10 +87,10 @@ _ClientCreateFd(
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(Port);
     inet_pton(AF_INET, Ip, &serverIp);
-    serverAddr.sin_addr.s_addr=serverIp;
-    if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
+    serverAddr.sin_addr.s_addr = serverIp;
+    if(connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
     {
-        ret = errno;
+        ret = -errno;
         LogErr("Connect failed");
         goto CommonReturn;
     }
@@ -141,7 +152,7 @@ _ClientProcFn(
     void* Arg
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     CLIENT_CONF_PARAM *confArg = (CLIENT_CONF_PARAM*)Arg;
     struct timeval tv;
     
@@ -155,13 +166,13 @@ _ClientProcFn(
     sg_ClientWorker.EventBase = event_base_new();
     if (!sg_ClientWorker.EventBase)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("event_base_new failed!");
         goto CommonReturn;
     }
     if (evthread_make_base_notifiable(sg_ClientWorker.EventBase) < 0)
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
     sg_ClientWorker.RecvEvent = event_new(sg_ClientWorker.EventBase, sg_ClientWorker.ClientFd, 
@@ -170,7 +181,7 @@ _ClientProcFn(
                                             EV_READ | EV_PERSIST, _ClientKeepalive, NULL);
     if (!sg_ClientWorker.RecvEvent || !sg_ClientWorker.Keepalive)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("event_new failed!");
         goto CommonReturn;
     }
@@ -209,17 +220,48 @@ CommonReturn:
 }
 
 static BOOL
-_ClientCmdFilter(
-    char* cmd
+_ClientIsExitCmd(
+    char* Cmd
     )
 {
-    BOOL notSupport = FALSE;
-    if (strcasecmp(cmd, MY_DISCONNECT_STRING) == 0)
+    BOOL isExit = FALSE;
+
+    if (!Cmd)
     {
-        notSupport = TRUE;
+        isExit = FALSE;
+        // do nothing
+    }
+    else if (strcasecmp(Cmd, MY_DISCONNECT_STRING) == 0)
+    {
+        isExit = TRUE;
+    }
+    
+    return isExit;
+}
+
+static void
+_ClientCmdUsage(
+    void
+    )
+{
+    printf("------------------------------ Usage ------------------------------\n");
+    printf("-------------------------------------------------------------------\n");
+}
+
+static BOOL
+_ClientCmdSupported(
+    char* Cmd
+    )
+{
+    BOOL support = TRUE;
+
+    if (!Cmd)
+    {
+        // do nothing
+        support = FALSE;
     }
 
-    return notSupport;
+    return support;
 }
 
 void
@@ -236,7 +278,7 @@ ClientProcMainLoop(
     buf = MyCalloc(bufLen);
     if (!buf)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         goto CommonReturn;
     }
     
@@ -247,8 +289,17 @@ ClientProcMainLoop(
         *(strchr(buf, '\n')) = '\0';
         inputLen = strnlen(buf, MY_MSG_CONTENT_MAX_LEN - 1) + 1;
 
-        if (!_ClientCmdFilter(buf))
+        if (_ClientIsExitCmd(buf))
         {
+            printf("%s exit now!\n", MY_CLIENT_ROLE_NAME);
+            fflush(stdout);
+            break;
+        }
+
+        if (!_ClientCmdSupported(buf))
+        {
+            _ClientCmdUsage();
+            fflush(stdout);
             break;
         }
 
@@ -296,7 +347,7 @@ ClientProcInit(
     
     if (!ClientConfParam)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
 
@@ -309,7 +360,7 @@ ClientProcInit(
     sg_ClientWorker.Thread = (pthread_t*)MyCalloc(sizeof(pthread_t));
     if (!sg_ClientWorker.Thread)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Apply memory failed!");
         goto CommonReturn;
     }

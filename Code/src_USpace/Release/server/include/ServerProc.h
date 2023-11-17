@@ -15,6 +15,14 @@ ServerProcExit(
     void
     );
 
+int
+ServerProcCmdShowStats(
+    __in char* Cmd,
+    __in size_t CmdLen,
+    __out char* ReplyBuff,
+    __out size_t ReplyBuffLen
+    );
+
 #ifdef __cplusplus
 }
 #endif

@@ -5,6 +5,8 @@
 #include "myCommonUtil.h"
 #include "myModuleHealth.h"
 
+#define CMDLINE_USAGE_OPT_PRINT_OFFSET                          36
+
 typedef struct _MY_CMDLINE_CONT
 {
     char* Opt;
@@ -29,7 +31,6 @@ typedef enum _MY_CMDLINE_ROLE
 }
 MY_CMDLINE_ROLE;
 
-
 typedef struct _MY_CMNLINE_WORKER
 {
     MY_CMDLINE_ROLE Role;
@@ -40,14 +41,30 @@ typedef struct _MY_CMNLINE_WORKER
 }
 MY_CMNLINE_WORKER;
 
+typedef struct _MY_CMD_EXTERNAL_NODE
+{
+    MY_CMD_EXTERNAL_CONT Content;
+    MY_LIST_NODE List;
+}
+MY_CMD_EXTERNAL_NODE;
+
+typedef struct _MY_CMD_EXTERN_WORKER
+{
+    BOOL Inited;
+    pthread_spinlock_t Lock;
+    MY_LIST_NODE* ExternalCmdHead;       // MY_CMD_EXTERNAL_NODE
+}
+MY_CMD_EXTERN_WORKER;
 
 static MY_CMNLINE_WORKER sg_CmdLineWorker = {
         .Role = MY_CMDLINE_ROLE_UNUSED, 
         .Thread = NULL,
         .ExitCb = NULL,
         .Exit = TRUE,
-        .Stat = { .ExecCnt = 0, .ConnectCnt = 0}
+        .Stat = { .ExecCnt = 0, .ConnectCnt = 0},
     };
+
+static MY_CMD_EXTERN_WORKER sg_CmdExternalWorker = {.Inited = FALSE};
 
 #define MY_CMDLINE_ARG_LIST                 \
         __MY_CMDLINE_ARG("start", "start this program", 2)  \
@@ -86,23 +103,36 @@ _CmdLineUsage(
     char* RoleName
     )
 {
-    printf("--------------------------------------------------------------------------\n");
+    MY_CMD_EXTERNAL_NODE *loop = NULL, *tmp = NULL;
+    
+    printf("----------------------------------------------");
+    printf("----------------------------------------------\n");
     printf("%10s Usage:\n\n", RoleName ? RoleName : "CmdLine");
 #undef __MY_CMDLINE_ARG
 #define __MY_CMDLINE_ARG(_opt_,_help_,_argc_) \
-    printf("%30s: [%-s]\n", _opt_, _help_);
+    printf("%*s: [%-s]\n", CMDLINE_USAGE_OPT_PRINT_OFFSET, _opt_, _help_);
     MY_CMDLINE_ARG_LIST
 #undef __MY_CMDLINE_ARG
-    printf("\n--------------------------------------------------------------------------\n");
+    if (sg_CmdExternalWorker.Inited && !MY_LIST_IS_EMPTY(sg_CmdExternalWorker.ExternalCmdHead))
+    {
+        pthread_spin_lock(&sg_CmdExternalWorker.Lock);
+        MY_LIST_FOR_EACH(sg_CmdExternalWorker.ExternalCmdHead, loop, tmp, MY_CMD_EXTERNAL_NODE, List)
+        {
+            printf("%*s: [%-s]\n", CMDLINE_USAGE_OPT_PRINT_OFFSET, loop->Content.Opt, loop->Content.Help);
+        }
+        pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+    }
+    printf("\n----------------------------------------------");
+    printf("----------------------------------------------\n");
 }
 
 int 
-_CmdServer_Init(
+_CmdServerInit(
     __inout int *ServerFd,
     __inout int *EpollFd
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int epoll_fd = -1;
     struct epoll_event event;
     int serverFd = -1;
@@ -112,13 +142,14 @@ _CmdServer_Init(
 
     if (!ServerFd || !EpollFd)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
 
     /* init server fd */
     // set reuseable
     serverFd = socket(AF_INET, SOCK_STREAM, 0);
+    LogInfo("Open serverFd %d", serverFd);
     (void)setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));
     // set fd nonBlock
     nonBlock = fcntl(serverFd, F_GETFL, 0);
@@ -127,17 +158,17 @@ _CmdServer_Init(
     // bind
     localAddr.sin_family = AF_INET;
     localAddr.sin_port = htons(MY_SERVER_CMD_LINE_PORT);
-    localAddr.sin_addr.s_addr=htonl(INADDR_ANY);
-    if(0 > bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
+    localAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);    // INADDR_ANY
+    if(bind(serverFd, (void *)&localAddr, sizeof(localAddr)))
     {
-        ret = -1;
+        ret = -errno;
         LogErr("Bind failed");
         fflush(stdout);
         goto CommonReturn;
     }
-    if(0 > listen(serverFd, 5))
+    if(listen(serverFd, 5))
     {
-        ret = -1;
+        ret = -errno;
         LogErr("Listen failed");
         fflush(stdout);
         goto CommonReturn;
@@ -147,7 +178,7 @@ _CmdServer_Init(
     epoll_fd = epoll_create1(0);
     if (0 > epoll_fd)
     {
-        ret = -1;
+        ret = -errno;
         LogErr("Create epoll socket failed %d", errno);
         fflush(stdout);
         goto CommonReturn;
@@ -156,7 +187,7 @@ _CmdServer_Init(
     event.data.fd = serverFd;
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, serverFd, &event))
     {
-        ret = -1;
+        ret = -errno;
         LogErr("Add to epoll socket failed %d", errno);
         fflush(stdout);
         goto CommonReturn;
@@ -165,7 +196,7 @@ _CmdServer_Init(
 CommonReturn:
     if (epoll_fd <= 0 || serverFd <= 0)
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         LogErr("Create fd failed!");
     }
     else
@@ -182,20 +213,43 @@ _CmdServerHandleMsg(
     char* Buff
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int len = 0;
-    char retString[MY_BUFF_1024] = {0};
+    char retString[MY_BUFF_1024 * MY_BUFF_1024] = {0};
+    MY_CMD_EXTERNAL_NODE *loop = NULL, *tmp = NULL;
+    BOOL matchedInExternal = FALSE;
 
     MY_UATOMIC_INC(&sg_CmdLineWorker.Stat.ExecCnt);
     
+    if (sg_CmdExternalWorker.Inited && !MY_LIST_IS_EMPTY(sg_CmdExternalWorker.ExternalCmdHead))
+    {
+        pthread_spin_lock(&sg_CmdExternalWorker.Lock);
+        MY_LIST_FOR_EACH(sg_CmdExternalWorker.ExternalCmdHead, loop, tmp, MY_CMD_EXTERNAL_NODE, List)
+        {
+            if (strcasestr(Buff, loop->Content.Opt))
+            {
+                ret = loop->Content.Cb(Buff, strlen(Buff), retString, sizeof(retString));
+                matchedInExternal = TRUE;
+                break;
+            }
+        }
+        pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+    }
+    if (matchedInExternal)
+    {
+        goto CommonReturn;
+    }
+    
     if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_STOP].Opt))
     {
-        len = send(Fd, "Process stopped.", sizeof("Process stopped."), 0);
+        sprintf(retString, "Process stopped.");
+        len = send(Fd, retString, strlen(retString) + 1, 0);
         if (len <= 0)
         {
-            ret = MY_EIO;
+            ret = -MY_EIO;
             LogErr("Send CmdLine reply failed!");
         }
+        retString[0] = 0;
         if (sg_CmdLineWorker.ExitCb)
         {
             sg_CmdLineWorker.ExitCb();
@@ -203,95 +257,77 @@ _CmdServerHandleMsg(
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_SHOWSTAT].Opt))
     {
-        char statBuff[MY_BUFF_1024 * MY_BUFF_1024] = {0};
         int offset = 0;
         int loop = 0;
-        statBuff[offset ++] = '\n';
+        retString[offset ++] = '\n';
         for(loop = 0; loop < MY_MODULES_ENUM_MAX; loop ++)
         {
             if (sg_ModuleReprt[loop].Cb)
             {
-                ret = sg_ModuleReprt[loop].Cb(statBuff, sizeof(statBuff), &offset);
+                ret = sg_ModuleReprt[loop].Cb(retString, sizeof(retString), &offset);
                 if (ret)
                 {
                     LogErr("Get module report failed! ret %d!", ret);
                     break;
                 }
-                statBuff[offset ++] = '\n';
+                retString[offset ++] = '\n';
             }
         }
         if (ret)
         {
-            memset(statBuff, 0, sizeof(statBuff));
+            memset(retString, 0, sizeof(retString));
             offset = strlen("Get module stats failed!");
-            strcpy(statBuff, "Get module stats failed!");
-        }
-        len = send(Fd, statBuff, offset + 1, 0);
-        if (len <= 0)
-        {
-            ret = MY_EIO;
-            LogErr("Send CmdLine reply failed!");
-        }
-        else
-        {
-            LogDbg("Send statbuff length:%d", len);
+            strcpy(retString, "Get module stats failed!");
         }
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_TPOOL_TIMEOUT].Opt))
     {
         uint32_t timeout = (uint32_t)atoi(strchr(Buff, ' '));
         sprintf(retString, "Set tpool timeout as %u.", timeout);
-        len = send(Fd, retString, strlen(retString) + 1, 0);
-        if (len <= 0)
-        {
-            ret = MY_EIO;
-            LogErr("Send CmdLine reply failed!");
-        }
         TPoolSetTimeout(timeout);
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_TPOOL_QUEUE_LENGTH].Opt))
     {
         int32_t queueLength = (int32_t)atoi(strchr(Buff, ' '));
         sprintf(retString, "Set tpool queue length as %u.", queueLength);
-        len = send(Fd, retString, strlen(retString) + 1, 0);
-        if (len <= 0)
-        {
-            ret = MY_EIO;
-            LogErr("Send CmdLine reply failed!");
-        }
         TPoolSetMaxQueueLength(queueLength);
     }
     else if (strcasestr(Buff, sg_CmdLineCont[MY_CMD_TYPE_CHANGE_LOG_LEVEL].Opt))
     {
         uint32_t logLevel = (uint32_t)atoi(strchr(Buff, ' '));
         sprintf(retString, "Set log level as %u.", logLevel);
-        len = send(Fd, retString, strlen(retString) + 1, 0);
-        if (len <= 0)
-        {
-            ret = MY_EIO;
-            LogErr("Send CmdLine reply failed!");
-        }
         LogSetLevel(logLevel);
     }
     else
     {
-        MY_UATOMIC_DEC(&sg_CmdLineWorker.Stat.ExecCnt);
-        ret = MY_ENOSYS;
+        ret = -MY_ENOSYS;
+        goto CommonReturn;
     }
 
+CommonReturn:
+    if (strlen(retString))
+    {
+        len = send(Fd, retString, strlen(retString) + 1, 0);
+        if (len <= 0)
+        {
+            LogErr("Send CmdLine reply failed!");
+        }
+    }
+    
     if (ret)
     {
+        MY_UATOMIC_DEC(&sg_CmdLineWorker.Stat.ExecCnt);
         LogErr("%d:%s", ret, My_StrErr(ret));
     }
     return ret;
 }
 
 void*
-_CmdServer_WorkerFunc(
+_CmdServerWorkerProc(
     void* arg
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int serverFd = -1;
     int epollFd = -1;
     int event_count = 0;
@@ -302,7 +338,7 @@ _CmdServer_WorkerFunc(
     char recvBuff[MY_BUFF_128] = {0};
     int recvLen = 0;
 
-    ret = _CmdServer_Init(&serverFd, &epollFd);
+    ret = _CmdServerInit(&serverFd, &epollFd);
     if (ret)
     {
         LogErr("Cmd server init failed %d", ret);
@@ -367,7 +403,7 @@ _CmdServer_WorkerFunc(
                 }
                 else
                 {
-                    ret = MY_EIO;
+                    ret = -MY_EIO;
                     LogErr("Recv in %d failed %d, errno %s:%d", waitEvents[loop].data.fd, recvLen, errno, strerror(errno));
                     goto CommonReturn;
                 }
@@ -403,6 +439,8 @@ _CmdLineInputIsOk(
     )
 {
     int loop = 0;
+    MY_CMD_EXTERNAL_NODE *externLoop = NULL, *externTmp = NULL;
+    
     if (!Argv || Argc < 1 || !Argv[1])
     {
         return FALSE;
@@ -414,25 +452,35 @@ _CmdLineInputIsOk(
             return TRUE;
     }
 
+    if (sg_CmdExternalWorker.Inited && !MY_LIST_IS_EMPTY(sg_CmdExternalWorker.ExternalCmdHead))
+    {
+        pthread_spin_lock(&sg_CmdExternalWorker.Lock);
+        MY_LIST_FOR_EACH(sg_CmdExternalWorker.ExternalCmdHead, externLoop, externTmp, MY_CMD_EXTERNAL_NODE, List)
+        {
+            if (strcasecmp(Argv[1], externLoop->Content.Opt) == 0 && Argc == externLoop->Content.Argc)
+                return TRUE;
+        }
+        pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+    }
+
     return FALSE;
 }
 
 int
-_CmdClient_WorkerFunc(
+_CmdClientWorkerProc(
     char** Argv,
     int Argc
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int clientFd = -1;
-    unsigned int serverIp = 0;
     struct sockaddr_in serverAddr = {0};
     int32_t reuseable = 1; // set port reuseable when fd closed
     char cmd[MY_BUFF_64] = {0};
 
     if (!Argv || (Argc != 2 && Argc != 3) || !_CmdLineInputIsOk(Argv, Argc))
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         _CmdLineUsage(NULL);
         goto CommonReturn;
     }
@@ -461,9 +509,8 @@ _CmdClient_WorkerFunc(
 
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(MY_SERVER_CMD_LINE_PORT);
-    inet_pton(AF_INET, "127.0.0.1", &serverIp);
-    serverAddr.sin_addr.s_addr = serverIp;
-    if(0 > connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
+    serverAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);    // INADDR_ANY
+    if(connect(clientFd, (void *)&serverAddr, sizeof(serverAddr)))
     {
         printf("Connect failed\n");
         goto CommonReturn;
@@ -472,11 +519,11 @@ _CmdClient_WorkerFunc(
     ret = send(clientFd, cmd, strlen(cmd) + 1, 0);
     if (ret > 0)
     {
-        ret = 0;
+        ret = MY_SUCCESS;
     }
     else
     {
-        ret = errno;
+        ret = -errno;
         printf("Send cmdline failed, %d %s\n", ret, My_StrErr(ret));
         goto CommonReturn;
     }
@@ -485,12 +532,12 @@ _CmdClient_WorkerFunc(
     ret = recv(clientFd, recvBuff, sizeof(recvBuff), 0);
     if (ret > 0)
     {
-        ret = 0;
+        ret = MY_SUCCESS;
         printf("%s\n", recvBuff);
     }
     else
     {
-        ret = errno;
+        ret = -errno;
         printf("Recv cmdline reply failed, %d %s\n", ret, My_StrErr(ret));
         goto CommonReturn;
     }
@@ -504,7 +551,7 @@ CmdLineModuleInit(
     MY_CMDLINE_MODULE_INIT_ARG *InitArg
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int pidFd = -1;
     char path[MY_BUFF_64] = {0};
     int isRunning = 0;
@@ -520,13 +567,13 @@ CmdLineModuleInit(
     pidFd = MyUtil_OpenPidFile(path);
     if (pidFd < 0)
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
     isRunning = MyUtil_IsProcessRunning(pidFd);
     if (isRunning == -1)
     {
-        ret = MY_EIO;
+        ret = -MY_EIO;
         goto CommonReturn;
     }
     sg_CmdLineWorker.Role = isRunning ? MY_CMDLINE_ROLE_CLT : MY_CMDLINE_ROLE_SVR;
@@ -559,12 +606,12 @@ CmdLineModuleInit(
             sg_CmdLineWorker.Thread = (pthread_t*)calloc(sizeof(pthread_t), 1);
             if (!sg_CmdLineWorker.Thread)
             {
-                ret = MY_ENOMEM;
+                ret = -MY_ENOMEM;
                 LogErr("Apply memory failed!");
                 goto CommonReturn;
             }
             sg_CmdLineWorker.Exit = FALSE;
-            ret = pthread_create(sg_CmdLineWorker.Thread, NULL, _CmdServer_WorkerFunc, NULL);
+            ret = pthread_create(sg_CmdLineWorker.Thread, NULL, _CmdServerWorkerProc, NULL);
             if (ret) 
             {
                 LogErr("Failed to create thread");
@@ -572,8 +619,8 @@ CmdLineModuleInit(
             }
             break;
         case MY_CMDLINE_ROLE_CLT:
-            (void)_CmdClient_WorkerFunc(InitArg->Argv, InitArg->Argc);
-            ret = MY_ERR_EXIT_WITH_SUCCESS;
+            (void)_CmdClientWorkerProc(InitArg->Argv, InitArg->Argc);
+            ret = -MY_ERR_EXIT_WITH_SUCCESS;
             goto CommonReturn;
         default:
             ret = EINVAL;
@@ -584,7 +631,7 @@ CmdLineModuleInit(
 
 CommonErr:
     _CmdLineUsage(InitArg->RoleName);
-    ret = MY_ERR_EXIT_WITH_SUCCESS;
+    ret = -MY_ERR_EXIT_WITH_SUCCESS;
 CommonReturn:
     return ret;
 }
@@ -594,6 +641,8 @@ CmdLineModuleExit(
     void
     )
 {
+    MY_CMD_EXTERNAL_NODE *loop = NULL, *tmp = NULL;
+    
     if (!sg_CmdLineWorker.Exit)
     {
         sg_CmdLineWorker.Exit = TRUE;
@@ -604,6 +653,77 @@ CmdLineModuleExit(
             sg_CmdLineWorker.Thread = NULL;
         }
     }
+    if (sg_CmdExternalWorker.Inited && !MY_LIST_IS_EMPTY(sg_CmdExternalWorker.ExternalCmdHead))
+    {
+        pthread_spin_lock(&sg_CmdExternalWorker.Lock);
+        MY_LIST_FOR_EACH(sg_CmdExternalWorker.ExternalCmdHead, loop, tmp, MY_CMD_EXTERNAL_NODE, List)
+        {
+            MY_LIST_DEL_NODE(&loop->List);
+            free(loop);
+        }
+        pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+        pthread_spin_destroy(&sg_CmdExternalWorker.Lock);
+    }
+}
+
+// optional, for special users
+int
+CmdExternalRegister(
+    __in MY_CMD_EXTERNAL_CONT Cont
+    )
+{
+    int ret = MY_SUCCESS;
+    MY_CMD_EXTERNAL_NODE *node = NULL;
+
+    if (sg_CmdLineWorker.Exit != TRUE)
+    {
+        // has to register before cmd module init
+        ret = -MY_ENOSYS;
+        goto CommonReturn;
+    }
+
+    if (!sg_CmdExternalWorker.Inited)
+    {
+        pthread_spin_init(&sg_CmdExternalWorker.Lock, PTHREAD_PROCESS_PRIVATE);
+        pthread_spin_lock(&sg_CmdExternalWorker.Lock);
+        if (!sg_CmdExternalWorker.ExternalCmdHead)  // prevent multi entering
+        {
+            sg_CmdExternalWorker.ExternalCmdHead = (MY_LIST_NODE*)calloc(sizeof(MY_LIST_NODE), 1);
+            if (!sg_CmdExternalWorker.ExternalCmdHead)
+            {
+                ret = -MY_ENOMEM;
+                pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+                goto CommonReturn;
+            }
+            MY_LIST_NODE_INIT(sg_CmdExternalWorker.ExternalCmdHead);
+        }
+        sg_CmdExternalWorker.Inited = TRUE;
+        pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+    }
+
+    if (Cont.Argc <= 1 || 
+        strnlen(Cont.Opt, sizeof(Cont.Opt)) == 0 ||
+        strnlen(Cont.Help, sizeof(Cont.Help)) == 0 ||
+        !Cont.Cb)
+    {
+        ret = -MY_EINVAL;
+        goto CommonReturn;
+    }
+
+    node = (MY_CMD_EXTERNAL_NODE*)calloc(sizeof(MY_CMD_EXTERNAL_NODE), 1);
+    if (!node)
+    {
+        ret = -MY_ENOMEM;
+        goto CommonReturn;
+    }
+    MY_LIST_NODE_INIT(&node->List);
+    memcpy(&node->Content, &Cont, sizeof(MY_CMD_EXTERNAL_CONT));
+    pthread_spin_lock(&sg_CmdExternalWorker.Lock);
+    MY_LIST_ADD_TAIL(&node->List, sg_CmdExternalWorker.ExternalCmdHead);
+    pthread_spin_unlock(&sg_CmdExternalWorker.Lock);
+
+CommonReturn:
+    return ret;
 }
 
 int

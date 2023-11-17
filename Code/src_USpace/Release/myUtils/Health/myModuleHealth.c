@@ -74,7 +74,7 @@ _HealthModuleStatCommonTemplate(
     void *Arg
     )
 {
-    char logBuff[MY_BUFF_1024 * 3] = {0};
+    char logBuff[MY_BUFF_1024 * MY_BUFF_1024] = {0};
     int offset = 0;
     
     UNUSED(Arg);
@@ -83,9 +83,9 @@ _HealthModuleStatCommonTemplate(
 
     StatReportCB cb = (StatReportCB)Arg;
     
-    if (cb(logBuff, sizeof(logBuff), &offset) == 0)
+    if (cb(logBuff, sizeof(logBuff), &offset) == 0 && strlen(logBuff))
     {
-        LogInfo("%s", logBuff);
+        LogDbg("%s", logBuff);
     }
     return ;
 }
@@ -136,7 +136,7 @@ _HealthModuleEntry(
     
     for(loop = 0; loop < MY_MODULES_ENUM_MAX; loop ++)
     {
-        if (sg_ModuleReprt[loop].Cb)
+        if (sg_ModuleReprt[loop].Cb && sg_ModuleReprt[loop].Interval > 0)
         {
             node = (MY_HEALTH_MONITOR_LIST_NODE*)_HealthCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
             if (!node)
@@ -191,13 +191,13 @@ HealthMonitorAdd(
     node = (MY_HEALTH_MONITOR_LIST_NODE*)_HealthCalloc(sizeof(MY_HEALTH_MONITOR_LIST_NODE));
     if (!node)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         goto CommonReturn;
     }
     node->Event = (struct event*)_HealthCalloc(sizeof(struct event));
     if (!node->Event)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         goto CommonReturn;
     }
     tv.tv_sec = TimeIntervalS;
@@ -278,20 +278,13 @@ HealthModuleInit(
 
     if (InitArg)
     {
-        sg_ModuleReprt[MY_MODULES_ENUM_LOG].Interval = InitArg->LogHealthIntervalS > 0 ? 
-                InitArg->LogHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_LOG].Interval;
-        sg_ModuleReprt[MY_MODULES_ENUM_MSG].Interval = InitArg->MsgHealthIntervalS > 0 ? 
-                InitArg->MsgHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_MSG].Interval;
-        sg_ModuleReprt[MY_MODULES_ENUM_TPOOL].Interval = InitArg->TPoolHealthIntervalS > 0 ? 
-                InitArg->TPoolHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_TPOOL].Interval;
-        sg_ModuleReprt[MY_MODULES_ENUM_CMDLINE].Interval = InitArg->CmdLineHealthIntervalS > 0 ? 
-                InitArg->CmdLineHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_CMDLINE].Interval;
-        sg_ModuleReprt[MY_MODULES_ENUM_MHEALTH].Interval = InitArg->MHHealthIntervalS > 0 ? 
-                InitArg->MHHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_MHEALTH].Interval;
-        sg_ModuleReprt[MY_MODULES_ENUM_MEM].Interval = InitArg->MemHealthIntervalS > 0 ? 
-                InitArg->MemHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_MEM].Interval;
-        sg_ModuleReprt[MY_MODULES_ENUM_TIMER].Interval = InitArg->TimerHealthIntervalS > 0 ? 
-                InitArg->TimerHealthIntervalS : sg_ModuleReprt[MY_MODULES_ENUM_TIMER].Interval;
+        sg_ModuleReprt[MY_MODULES_ENUM_LOG].Interval = InitArg->LogHealthIntervalS;
+        sg_ModuleReprt[MY_MODULES_ENUM_MSG].Interval = InitArg->MsgHealthIntervalS;
+        sg_ModuleReprt[MY_MODULES_ENUM_TPOOL].Interval = InitArg->TPoolHealthIntervalS;
+        sg_ModuleReprt[MY_MODULES_ENUM_CMDLINE].Interval = InitArg->CmdLineHealthIntervalS;
+        sg_ModuleReprt[MY_MODULES_ENUM_MHEALTH].Interval = InitArg->MHHealthIntervalS;
+        sg_ModuleReprt[MY_MODULES_ENUM_MEM].Interval = InitArg->MemHealthIntervalS;
+        sg_ModuleReprt[MY_MODULES_ENUM_TIMER].Interval = InitArg->TimerHealthIntervalS;
     }
     
     pthread_spin_init(&sg_HealthWorker.Lock, PTHREAD_PROCESS_PRIVATE);
@@ -320,7 +313,7 @@ HealthModuleCollectStat(
     int* Offset
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     MY_HEALTH_MONITOR_LIST_NODE *tmp = NULL, *loop = NULL;
     int len = 0;
 
@@ -334,7 +327,7 @@ HealthModuleCollectStat(
                 "[EventName:%s, EventInterval:%d]", loop->Name, loop->IntervalS);
             if (len < 0 || len >= BuffMaxLen - *Offset - len)
             {
-                ret = MY_ENOMEM;
+                ret = -MY_ENOMEM;
                 LogErr("Too long Msg!");
                 goto CommonReturn;
             }

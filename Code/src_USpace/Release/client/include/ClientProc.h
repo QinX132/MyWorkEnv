@@ -6,12 +6,15 @@ extern "C"{
 #endif
 
 #include "myModuleCommon.h"
+#define MY_CLIENT_ROLE_NAME                                 "QinXClient"
 
 typedef struct _CLIENT_CONF_PARAM
 {
     char ServerIp[MY_BUFF_64];
     MY_LOG_LEVEL LogLevel;
     char LogFilePath[MY_BUFF_64];
+    int LogMaxSize;
+    int LogMaxNum;
 }
 CLIENT_CONF_PARAM;
 
