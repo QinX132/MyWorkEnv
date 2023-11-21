@@ -2,7 +2,6 @@
 #include "myModuleHealth.h"
 #include "myLogIO.h"
 #include "myList.h"
-#include "assert.h"
 #include "myCommonUtil.h"
 
 #define MY_TASK_TIME_OUT_DEFAULT_VAL                            5 //seconds

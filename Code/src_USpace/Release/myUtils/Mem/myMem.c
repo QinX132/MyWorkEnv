@@ -98,7 +98,7 @@ MemUnRegister(
         pthread_spin_lock(&sg_MemWorker.Lock);
         if (!MemLeakSafetyCheckWithId(*MemId))
         {
-            ret = -MY_ERR_EXIT_WITH_SUCCESS;
+            ret = -MY_ERR_MEM_LEAK;
         }
         memset(&sg_MemWorker.Nodes[*MemId], 0, sizeof(MY_MEM_NODE));
         *MemId = MY_MEM_MODULE_INVALID_ID;
@@ -168,7 +168,8 @@ MemModuleCollectStat(
         {
             continue;
         }
-        len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, "[MemId=%u, MemName<%s>, MemAlloced=%llu, MemFreed=%llu, MemInusing=%lld]",
+        len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
+                "[MemId=%u, MemName<%s>, MemAlloced=%"PRIu64", MemFreed=%"PRIu64", MemInusing=%"PRIu64"]",
                 sg_MemWorker.Nodes[loop].MemModuleId, sg_MemWorker.Nodes[loop].MemModuleName, 
                 sg_MemWorker.Nodes[loop].MemBytesAlloced, sg_MemWorker.Nodes[loop].MemBytesFreed,
                 sg_MemWorker.Nodes[loop].MemBytesAlloced - sg_MemWorker.Nodes[loop].MemBytesFreed);
@@ -278,7 +279,7 @@ MemLeakSafetyCheckWithId(
     }
     pthread_spin_lock(&sg_MemWorker.Nodes[MemId].MemSpinlock);
     {
-        LogInfo("%s:alloced:%lld freed:%lld", sg_MemWorker.Nodes[MemId].MemModuleName, 
+        LogInfo("%s:alloced:%"PRIu64" freed:%"PRIu64"", sg_MemWorker.Nodes[MemId].MemModuleName, 
             sg_MemWorker.Nodes[MemId].MemBytesAlloced, sg_MemWorker.Nodes[MemId].MemBytesFreed);
         ret = sg_MemWorker.Nodes[MemId].MemBytesFreed == sg_MemWorker.Nodes[MemId].MemBytesAlloced;
     }

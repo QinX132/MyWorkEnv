@@ -1,6 +1,7 @@
 #include "include.h"
 #include "myClientServerMsgs.h"
 #include "ClientProc.h"
+#include "ClientMsgHandler.h"
 
 #define MY_CLIENT_WORKER_KEEPALIVE_INTERVAL                             1 // s
 
@@ -125,7 +126,11 @@ _ClientRecvMsg(
     ret = RecvMsg(Fd, &msg);
     if (ret == MY_SUCCESS)
     {
-        printf("<<<< RecvMsg: \n%s\n", (char*)msg.Cont.VarLenCont);
+        ret = ClientHandleMsg(Fd, &msg);
+        if (ret)
+        {
+            LogErr("handle msg failed, ret %d:%s\n", ret, My_StrErr(ret));
+        }
     }
     else
     {
@@ -219,51 +224,6 @@ CommonReturn:
     return NULL;
 }
 
-static BOOL
-_ClientIsExitCmd(
-    char* Cmd
-    )
-{
-    BOOL isExit = FALSE;
-
-    if (!Cmd)
-    {
-        isExit = FALSE;
-        // do nothing
-    }
-    else if (strcasecmp(Cmd, MY_DISCONNECT_STRING) == 0)
-    {
-        isExit = TRUE;
-    }
-    
-    return isExit;
-}
-
-static void
-_ClientCmdUsage(
-    void
-    )
-{
-    printf("------------------------------ Usage ------------------------------\n");
-    printf("-------------------------------------------------------------------\n");
-}
-
-static BOOL
-_ClientCmdSupported(
-    char* Cmd
-    )
-{
-    BOOL support = TRUE;
-
-    if (!Cmd)
-    {
-        // do nothing
-        support = FALSE;
-    }
-
-    return support;
-}
-
 void
 ClientProcMainLoop(
     void
@@ -273,7 +233,9 @@ ClientProcMainLoop(
     MY_MSG *msgToSend = NULL;
     size_t bufLen = MY_MSG_CONTENT_MAX_LEN;
     char *buf = NULL;
+    int32_t msgType = MY_MSG_TYPE_START_UNSPEC;
     uint32_t inputLen = 0;
+    char msgContbuff[MY_BUFF_1024] = {0};
 
     buf = MyCalloc(bufLen);
     if (!buf)
@@ -289,43 +251,28 @@ ClientProcMainLoop(
         *(strchr(buf, '\n')) = '\0';
         inputLen = strnlen(buf, MY_MSG_CONTENT_MAX_LEN - 1) + 1;
 
-        if (_ClientIsExitCmd(buf))
+        if (ClientCmdIsExit(buf))
         {
-            printf("%s exit now!\n", MY_CLIENT_ROLE_NAME);
+            printf("%s is exiting now...\n", MY_CLIENT_ROLE_NAME);
             fflush(stdout);
             break;
         }
 
-        if (!_ClientCmdSupported(buf))
+        memset(msgContbuff, 0, sizeof(msgContbuff));
+        if (!ClientCmdSupported(buf, inputLen, &msgType, msgContbuff, sizeof(msgContbuff)))
         {
-            _ClientCmdUsage();
+            ClientCmdUsage();
             fflush(stdout);
-            break;
+            continue;
         }
 
-        msgToSend = NewMsg();
-        if (!msgToSend)
-        {
-            goto CommonReturn;
-        }
-
-        msgToSend->Head.Type = MY_MSG_TYPE_EXEC_CMD;
-        ret = FillMsgCont(msgToSend, buf, inputLen);
+        ret = ClientHandleCmd(sg_ClientWorker.ClientFd, msgType, 
+                        msgContbuff, strnlen(msgContbuff, sizeof(msgContbuff)));
         if (ret)
         {
-            LogErr("Fill msg failed!");
-            goto CommonReturn;
+            LogErr("Cmd handle failed! msgType%d, msgContbuff:%s, ret %d:%s", 
+                msgType, msgContbuff, ret, My_StrErr(ret));
         }
-
-        ret = SendMsg(sg_ClientWorker.ClientFd, msgToSend);
-        if (ret)
-        {
-            LogErr("Send msg failed!");
-            goto CommonReturn;
-        }
-        
-        FreeMsg(msgToSend);
-        msgToSend = NULL;
     }
     
 CommonReturn:

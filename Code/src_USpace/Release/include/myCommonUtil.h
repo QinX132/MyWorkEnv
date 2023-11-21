@@ -50,6 +50,24 @@ MyUtil_GetCpuTime(
     uint64_t *IdleTime
     );
 
+uint64_t 
+MyUtil_htonll(
+    uint64_t value
+    );
+
+uint64_t 
+MyUtil_ntohll(
+    uint64_t value
+    );
+
+void
+MyUtil_ChangeCharA2B(
+    char* String,
+    size_t StringLen,
+    char A,
+    char B
+    );
+
 #ifdef __cplusplus
  }
 #endif

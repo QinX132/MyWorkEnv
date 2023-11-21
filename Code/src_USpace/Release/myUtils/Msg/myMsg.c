@@ -1,6 +1,10 @@
 #include "myMsg.h"
 #include "myLogIO.h"
 #include "myModuleHealth.h"
+#include "myCommonUtil.h"
+
+_Static_assert(sizeof(MY_MSG_HEAD) == 40, "msg head size mismatch!");
+_Static_assert(sizeof(MY_MSG_TAIL) == 88, "msg tail size mismatch!");
 
 typedef struct _MY_MSG_STATS
 {
@@ -84,7 +88,7 @@ MsgModuleCollectStat(
     int len = 0;
     
     len = snprintf(Buff + *Offset, BuffMaxLen - *Offset, 
-        "<%s:[MsgSend=%u, MsgSendBytes=%llu, MsgSendFailed=%u, MsgRecv=%u, MsgRecvBytes=%llu, MsgRecvFailed=%u]>",
+        "<%s:[MsgSend=%u, MsgSendBytes=%"PRIu64", MsgSendFailed=%u, MsgRecv=%u, MsgRecvBytes=%"PRIu64", MsgRecvFailed=%u]>",
         ModuleNameByEnum(MY_MODULES_ENUM_MSG), sg_MsgStats.MsgSend, sg_MsgStats.MsgSendBytes, 
         sg_MsgStats.MsgSendFailed, sg_MsgStats.MsgRecv, sg_MsgStats.MsgRecvBytes, sg_MsgStats.MsgRecvFailed);
     if (len < 0 || len >= BuffMaxLen - *Offset)
@@ -110,11 +114,12 @@ RecvMsg(
 {
     int ret = MY_SUCCESS;
     int recvLen = 0;
-    int currentLen = 0;
+    int currentLen = 0, tmpLen = 0;
     int recvRet = 0;
     char recvLogBuff[MY_MSG_CONTENT_MAX_LEN + MY_BUFF_1024] = {0};
     size_t recvLogLen = 0;
-    size_t len = 0;
+    struct timeval tv;
+    int64_t latency = 0;
 
     if (!sg_MsgStats.Inited)
     {
@@ -128,10 +133,11 @@ RecvMsg(
         goto CommonReturn;
     }
     
+    gettimeofday(&tv, NULL);
     memset(RetMsg, 0, sizeof(MY_MSG));
     // recv head
-    recvLen = sizeof(MY_MSG_HEAD);
     currentLen = 0;
+    recvLen = sizeof(MY_MSG_HEAD);
     for(; currentLen < recvLen;)
     {
         recvRet = recv(Fd, ((char*)RetMsg) + currentLen, recvLen - currentLen, 0);
@@ -162,26 +168,22 @@ RecvMsg(
             }
         }
     }
-    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "Recv Msg: MsgType=%u ContentLen=%u VerMagic=%u, SessionId=%u, IsMsgEnd=%u ", 
+    RetMsg->Head.Type = ntohs(RetMsg->Head.Type);
+    RetMsg->Head.ContentLen = ntohl(RetMsg->Head.ContentLen);
+    RetMsg->Head.SessionId = ntohl(RetMsg->Head.SessionId);
+    recvLogLen += snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "Recv Msg: MsgType=%u ContentLen=%u VerMagic=0x%x, SessionId=%u, IsMsgEnd=%u ", 
                 RetMsg->Head.Type, RetMsg->Head.ContentLen, RetMsg->Head.VerMagic, RetMsg->Head.SessionId,
                 RetMsg->Head.IsMsgEnd);
-    if (len >= sizeof(recvLogBuff) - recvLogLen)
-    {
-        ret = -MY_ENOBUFS;
-        LogErr("Too long msg!");
-        goto CommonReturn;
-    }
-    recvLogLen += len;
     // recv content
+    currentLen = 0;
     recvLen = RetMsg->Head.ContentLen;
     if (UNLIKELY(recvLen > (int)sizeof(MY_MSG_CONT)))
     {
         LogErr("Too long cont len %u", RetMsg->Head.ContentLen);
-        ret = EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
-    currentLen = 0;
     for(; currentLen < recvLen;)
     {
         recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_MSG_HEAD)) + currentLen, recvLen - currentLen, 0);
@@ -212,18 +214,13 @@ RecvMsg(
             }
         }
     }
-    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+    tmpLen = recvLogLen;
+    recvLogLen += snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
                 "VarLenCont=\"%s\" ", RetMsg->Cont.VarLenCont);
-    if (len >= sizeof(recvLogBuff) - recvLogLen)
-    {
-        ret = -MY_ENOBUFS;
-        LogErr("Too long msg!");
-        goto CommonReturn;
-    }
-    recvLogLen += len;
+    MyUtil_ChangeCharA2B(recvLogBuff + tmpLen, recvLogLen - tmpLen, '\n', ' ');
     // recv tail
-    recvLen = sizeof(MY_MSG_TAIL);
     currentLen = 0;
+    recvLen = sizeof(MY_MSG_TAIL);
     for(; currentLen < recvLen;)
     {
         recvRet = recv(Fd, ((char*)RetMsg + sizeof(MY_MSG_HEAD) + sizeof(MY_MSG_CONT)) + currentLen, recvLen - currentLen, 0);
@@ -254,22 +251,17 @@ RecvMsg(
             }
         }
     }
-    len = snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "TimeStamp=%llu", RetMsg->Tail.TimeStamp);
-    if (len >= sizeof(recvLogBuff) - recvLogLen)
-    {
-        ret = -MY_ENOBUFS;
-        LogErr("Too long msg!");
-        goto CommonReturn;
-    }
-    recvLogLen += len;
-
+    RetMsg->Tail.TimeStamp = MyUtil_ntohll(RetMsg->Tail.TimeStamp);
+    latency = (int64_t)(tv.tv_sec * 1000 + tv.tv_usec / 1000 - RetMsg->Tail.TimeStamp);
+    recvLogLen += snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
+                "TimeStamp=%"PRIu64" Latency=%"PRId64" ms", RetMsg->Tail.TimeStamp, 
+                latency > 0 ? latency : 0);
     LogInfo("%s", recvLogBuff);
 CommonReturn:
     if (sg_MsgStats.Inited)
     {
         pthread_spin_lock(&sg_MsgStats.Lock);
-        if (ret != 0 && ret != -MY_ERR_PEER_CLOSED)
+        if (ret != MY_SUCCESS && ret != -MY_ERR_PEER_CLOSED)
         {
             sg_MsgStats.MsgRecvFailed ++;
         }
@@ -290,7 +282,6 @@ NewMsg(
     )
 {
     MY_MSG* retMsg = NULL;
-    static uint32_t sessionId = 0;
     
     if (!sg_MsgStats.Inited)
     {
@@ -301,9 +292,6 @@ NewMsg(
     if (retMsg)
     {
         retMsg->Head.VerMagic = MY_MSG_VER_MAGIC;
-        pthread_spin_lock(&sg_MsgStats.Lock);
-        retMsg->Head.SessionId = sessionId ++;
-        pthread_spin_unlock(&sg_MsgStats.Lock);
     }
 
 CommonReturn:
@@ -330,11 +318,10 @@ SendMsg(
 {
     int ret = 0;
     int sendLen = 0;
-    int currentLen = 0;
+    int currentLen = 0, tmpLen = 0;;
     int sendRet = 0;
     char sendLogBuff[MY_MSG_CONTENT_MAX_LEN + MY_BUFF_1024] = {0};
     size_t sendLogLen = 0;
-    size_t len = 0;
     struct timeval tv;
     
     if (!sg_MsgStats.Inited || !Msg)
@@ -342,11 +329,13 @@ SendMsg(
         goto CommonReturn;
     }
     
-    gettimeofday(&tv, NULL);
-    Msg->Tail.TimeStamp = tv.tv_sec + tv.tv_usec / 1000;
+    Msg->Head.IsMsgEnd  = TRUE;
     //send msg header
     sendLen = sizeof(MY_MSG_HEAD);
     currentLen = 0;
+    Msg->Head.Type = htons(Msg->Head.Type);
+    Msg->Head.ContentLen = htonl(Msg->Head.ContentLen);
+    Msg->Head.SessionId = htonl(Msg->Head.SessionId);
     for(; currentLen < sendLen;)
     {
         sendRet = send(Fd, ((char*)&Msg->Head) + currentLen, sendLen - currentLen, 0);
@@ -374,17 +363,13 @@ SendMsg(
             goto CommonReturn;
         }
     }
-    len = snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
-                "Send Msg: MsgType=%u ContentLen=%u VerMagic=%u, SessionId=%u, IsMsgEnd=%u ", 
+    Msg->Head.Type = ntohs(Msg->Head.Type);
+    Msg->Head.ContentLen = ntohl(Msg->Head.ContentLen);
+    Msg->Head.SessionId = ntohl(Msg->Head.SessionId);
+    sendLogLen += snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
+                "Send Msg: MsgType=%u ContentLen=%u VerMagic=0x%x, SessionId=%u, IsMsgEnd=%u ", 
                 Msg->Head.Type, Msg->Head.ContentLen, Msg->Head.VerMagic, Msg->Head.SessionId,
                 Msg->Head.IsMsgEnd);
-    if (len >= sizeof(sendLogBuff) - sendLogLen)
-    {
-        ret = -MY_ENOBUFS;
-        LogErr("Too long msg!");
-        goto CommonReturn;
-    }
-    sendLogLen += len;
     // send msg content
     sendLen = Msg->Head.ContentLen;
     currentLen = 0;
@@ -415,18 +400,16 @@ SendMsg(
             goto CommonReturn;
         }
     }
-    len = snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
+    tmpLen = sendLogLen;
+    sendLogLen += snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
                 "VarLenCont=\"%s\" ", Msg->Cont.VarLenCont);
-    if (len >= sizeof(sendLogBuff) - sendLogLen)
-    {
-        ret = -MY_ENOBUFS;
-        LogErr("Too long msg!");
-        goto CommonReturn;
-    }
-    sendLogLen += len;
+    MyUtil_ChangeCharA2B(sendLogBuff + tmpLen, sendLogLen - tmpLen, '\n', ' ');
     // send msg tail
+    gettimeofday(&tv, NULL);
+    Msg->Tail.TimeStamp = tv.tv_sec * 1000 + tv.tv_usec / 1000;
     sendLen = sizeof(MY_MSG_TAIL);
     currentLen = 0;
+    Msg->Tail.TimeStamp = MyUtil_htonll(Msg->Tail.TimeStamp);
     for(; currentLen < sendLen;)
     {
         sendRet = send(Fd, ((char*)&Msg->Head + sizeof(MY_MSG_HEAD) + sizeof(MY_MSG_CONT)) + currentLen, sendLen - currentLen, 0);
@@ -454,16 +437,9 @@ SendMsg(
             goto CommonReturn;
         }
     }
-    len = snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
-                "TimeStamp=%llu", Msg->Tail.TimeStamp);
-    if (len >= sizeof(sendLogBuff) - sendLogLen)
-    {
-        ret = -MY_ENOBUFS;
-        LogErr("Too long msg!");
-        goto CommonReturn;
-    }
-    sendLogLen += len;
-
+    Msg->Tail.TimeStamp = MyUtil_ntohll(Msg->Tail.TimeStamp);
+    sendLogLen += snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
+                "TimeStamp=%"PRIu64"", Msg->Tail.TimeStamp);
     LogInfo("%s", sendLogBuff);
 
 CommonReturn:

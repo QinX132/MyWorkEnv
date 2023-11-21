@@ -128,6 +128,7 @@ LogPrint(
     if (!sg_LogWorker.Inited)
     {
         va_start(args, Fmt);
+        printf("[%s-%d]:", Function, Line);
         vprintf(Fmt, args);
         va_end(args);
         printf("\n");

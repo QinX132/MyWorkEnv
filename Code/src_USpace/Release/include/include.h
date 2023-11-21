@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
@@ -12,6 +14,9 @@
 #include <malloc.h>
 #include <stdint.h>
 #include <signal.h>
+#include <endian.h>
+#include <assert.h>
+#include <ctype.h>
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -38,23 +43,19 @@
 extern "C"{
 #endif
 
-#define BOOL                                unsigned char
-#define uint8_t                             unsigned char
-#define uint16_t                            unsigned short
-#define uint32_t                            unsigned int
-#define uint64_t                            unsigned long long
+#define BOOL                                        unsigned char
+#define TRUE                                        1
+#define FALSE                                       0
 #define __in
 #define __in_ecout(size)
 #define __out
 #define __out_ecout(size)
 #define __inout
 #define __inout_ecout(size)
-#define TRUE                                1
-#define FALSE                               0
-#define UNUSED(_p_)                         ((void)(_p_))
-#define MUST_CHECK                          __attribute__((warn_unused_result))
-#define LIKELY(x)                           __builtin_expect(!!(x), 1)
-#define UNLIKELY(x)                         __builtin_expect(!!(x), 0)
+#define UNUSED(_p_)                                 ((void)(_p_))
+#define MUST_CHECK                                  __attribute__((warn_unused_result))
+#define LIKELY(x)                                   __builtin_expect(!!(x), 1)
+#define UNLIKELY(x)                                 __builtin_expect(!!(x), 0)
 
 #define MY_BUFF_16                                  16
 #define MY_BUFF_32                                  32

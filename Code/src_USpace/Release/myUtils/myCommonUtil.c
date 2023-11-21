@@ -111,3 +111,37 @@ CommonReturn:
     }
     return ret;
 }
+
+uint64_t 
+MyUtil_htonll(
+    uint64_t value
+    )
+{
+    uint64_t high = (value >> 32) & 0xFFFFFFFF;
+    uint64_t low = value & 0xFFFFFFFF;
+    return ((uint64_t)htonl(high) << 32) | htonl(low);
+}
+
+uint64_t 
+MyUtil_ntohll(
+    uint64_t value
+    )
+{
+    uint64_t high = (value >> 32) & 0xFFFFFFFF;
+    uint64_t low = value & 0xFFFFFFFF;
+    return ((uint64_t)ntohl(high) << 32) | ntohl(low);
+}
+
+void
+MyUtil_ChangeCharA2B(
+    char* String,
+    size_t StringLen,
+    char A,
+    char B
+    )
+{
+    while (StringLen --)
+        if (*(String + StringLen) == A)
+            *(String + StringLen) = B;
+}
+

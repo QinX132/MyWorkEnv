@@ -6,7 +6,8 @@ UTILS_ROOT			= 	$(WORK_ROOT)/../myUtils
 THIRD_PARTY_ROOT	= 	$(WORK_ROOT)/../../third_party
 
 SRC_FILE	+=	$(WORK_ROOT)/QinXClientMain.c \
-				$(WORK_ROOT)/ClientProc.c
+				$(WORK_ROOT)/ClientProc.c \
+				$(WORK_ROOT)/ClientMsgHandler.c
 OBJ_FILE	:= $(SRC_FILE:.c=.o) 
 
 CFLAGS	+=	-I$(WORK_ROOT)/../include/ \
