@@ -1,6 +1,7 @@
 tcpclient
 tcpserver
 QinXClient
+!UnitTest/
 UnitTest
 libmyUtils.a
 QinXServer
