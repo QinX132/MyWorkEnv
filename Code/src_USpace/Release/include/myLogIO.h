@@ -31,6 +31,8 @@ typedef struct _MY_LOG_MODULE_INIT_ARG
 {
     char *LogFilePath;
     MY_LOG_LEVEL LogLevel;
+    int LogMaxSize;     // Mb
+    int LogMaxNum;
     char *RoleName;
 }
 MY_LOG_MODULE_INIT_ARG;

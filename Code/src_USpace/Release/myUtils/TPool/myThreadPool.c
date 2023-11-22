@@ -2,7 +2,6 @@
 #include "myModuleHealth.h"
 #include "myLogIO.h"
 #include "myList.h"
-#include "assert.h"
 #include "myCommonUtil.h"
 
 #define MY_TASK_TIME_OUT_DEFAULT_VAL                            5 //seconds
@@ -75,7 +74,7 @@ _TPoolFree(
 }
 
 static void* 
-_TPoolProc(
+_TPoolProcFn(
     void* arg
     )
 {
@@ -112,6 +111,7 @@ _TPoolProc(
         {
             continue;
         }
+        
         
         MY_LIST_FOR_EACH(&listHeadTmp, loop, tmp, MY_TPOOL_TASK, List)
         {
@@ -164,7 +164,7 @@ TPoolModuleInit(
     )
 {
     int loop = 0;
-    int ret = 0;
+    int ret = MY_SUCCESS;
     pthread_attr_t attr;
     int sleepIntervalMs = 1;
     int waitTimeMs = sleepIntervalMs * 10; // 10 ms
@@ -176,7 +176,7 @@ TPoolModuleInit(
 
     if (!InitArg || InitArg->ThreadPoolSize <= 0)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
 
@@ -190,7 +190,7 @@ TPoolModuleInit(
     sg_ThreadPool = (MY_THREAD_POOL*)_TPoolCalloc(sizeof(MY_THREAD_POOL));
     if (!sg_ThreadPool)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         goto CommonReturn;
     }
     
@@ -214,7 +214,7 @@ TPoolModuleInit(
         sg_ThreadPool->Threads = (pthread_t*)_TPoolCalloc(sizeof(pthread_t) * InitArg->ThreadPoolSize);
         for (loop = 0; loop < InitArg->ThreadPoolSize; loop ++)
         {
-            ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _TPoolProc, (void*)sg_ThreadPool);
+            ret = pthread_create(&(sg_ThreadPool->Threads[loop]), &attr, _TPoolProcFn, (void*)sg_ThreadPool);
             assert(!ret);
         }
         ret = pthread_attr_destroy(&attr);
@@ -280,12 +280,12 @@ TPoolAddTask(
     __in void* TaskArg
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     MY_TPOOL_TASK *node = NULL;
     
     if (!sg_TPoolModuleInited)
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
     
@@ -293,7 +293,7 @@ TPoolAddTask(
     {
         if (sg_ThreadPool->TaskListLength >= sg_ThreadPool->TaskMaxLength)
         {
-            ret = MY_EBUSY;
+            ret = -MY_EBUSY;
             LogErr("%d task in schedule!", sg_ThreadPool->TaskListLength);
             pthread_cond_signal(&sg_ThreadPool->Cond);
             pthread_mutex_unlock(&sg_ThreadPool->Lock);
@@ -305,7 +305,7 @@ TPoolAddTask(
     node = (MY_TPOOL_TASK*)_TPoolCalloc(sizeof(MY_TPOOL_TASK));
     if (!node) 
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Apply mem failed!");
         goto CommonReturn;
     }
@@ -337,7 +337,7 @@ TPoolAddTaskAndWait(
     int32_t TimeoutSec
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     struct timespec ts = {0, 0};
     BOOL taskAdded = FALSE;
     pthread_mutex_t *taskLock;
@@ -348,7 +348,7 @@ TPoolAddTaskAndWait(
     
     if (!sg_TPoolModuleInited || (sg_ThreadPool->TaskDefaultTimeout <= 0 && TimeoutSec <= 0))
     {
-        ret = MY_EINVAL;
+        ret = -MY_EINVAL;
         goto CommonReturn;
     }
     taskLock = (pthread_mutex_t*)_TPoolCalloc(sizeof(pthread_mutex_t));
@@ -356,7 +356,7 @@ TPoolAddTaskAndWait(
     node = (MY_TPOOL_TASK*)_TPoolCalloc(sizeof(MY_TPOOL_TASK));
     if (!taskLock || !taskCond || !node)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Apply mem failed!");
         goto CommonReturn;
     }
@@ -388,7 +388,7 @@ TPoolAddTaskAndWait(
         }
         else
         {
-            ret = MY_EIO;
+            ret = -MY_EIO;
             LogErr("Get time failed!");
         }
     }
@@ -406,9 +406,9 @@ TPoolAddTaskAndWait(
             ts.tv_sec += sg_ThreadPool->TaskDefaultTimeout;
             LogInfo("Add with timeout %d", sg_ThreadPool->TaskDefaultTimeout);
         }
-        ret = pthread_cond_timedwait(taskCond, taskLock, &ts);
+        ret = -pthread_cond_timedwait(taskCond, taskLock, &ts);
     }
-    if (ETIMEDOUT == ret)
+    if (-MY_ETIMEDOUT == ret)
     {
         LogErr("Task wait timeout!");
         node->TaskStat = MY_TPOOL_TASK_STATUS_TIMEOUT;
@@ -419,7 +419,7 @@ CommonReturn:
     ret == MY_SUCCESS ? UNUSED(ret) : MY_UATOMIC_INC(&sg_ThreadPoolStats.TaskFailed);
     if (taskInited)
     {
-        if (!taskAdded || ret != ETIMEDOUT)
+        if (!taskAdded || ret != -MY_ETIMEDOUT)
         {
             pthread_mutex_destroy(taskLock);
             pthread_cond_destroy(taskCond);
@@ -437,7 +437,7 @@ TPoolModuleCollectStat(
     int* Offset
     )
 {
-    int ret = 0;
+    int ret = MY_SUCCESS;
     int len = 0;
     
     if (!sg_TPoolModuleInited)
@@ -452,7 +452,7 @@ TPoolModuleCollectStat(
             sg_ThreadPool->CurrentThreadNum, sg_ThreadPool->TaskListLength);
     if (len < 0 || len >= BuffMaxLen - *Offset)
     {
-        ret = MY_ENOMEM;
+        ret = -MY_ENOMEM;
         LogErr("Too long Msg!");
         goto CommonReturn;
     }

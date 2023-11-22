@@ -143,15 +143,12 @@ extern "C"{
 #define MY_ERFKILL              ERFKILL         /* Operation not possible due to RF-kill */
 #define MY_EHWPOISON            EHWPOISON       /* Memory page has hardware error */
 
-
-#ifndef _MY_ERR_NO_ENUM_AND_STRING_
-#define _MY_ERR_NO_ENUM_AND_STRING_
-
 typedef enum _MY_ERR_NO_ENUM
 {
     MY_ERR_NO_START             = 255,
     MY_ERR_EXIT_WITH_SUCCESS    = 256,
     MY_ERR_PEER_CLOSED          = 257,
+    MY_ERR_MEM_LEAK             = 258,
     
     MY_ERR_NO_ENUM_MAX 
 }
@@ -161,7 +158,8 @@ static const char* sg_myTestErrnoStr[MY_ERR_NO_ENUM_MAX - MY_ERR_NO_START] =
 {
     [MY_ERR_NO_START - MY_ERR_NO_START]             = "unused error: errno start",
     [MY_ERR_EXIT_WITH_SUCCESS - MY_ERR_NO_START]    = "exit with success: not an error",
-    [MY_ERR_PEER_CLOSED - MY_ERR_NO_START]          = "peer closed"
+    [MY_ERR_PEER_CLOSED - MY_ERR_NO_START]          = "peer closed",
+    [MY_ERR_MEM_LEAK - MY_ERR_NO_START]             = "mem leak"
 };
 
 static inline const char*
@@ -169,13 +167,15 @@ My_StrErr(
     int Errno
     )
 {
-    return Errno < MY_ERR_NO_START ? strerror(Errno) : 
-            (Errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[Errno - MY_ERR_NO_START] : "UnknownErr");
+    int errno;
+    errno = Errno > 0 ? Errno : -Errno;
+    
+    return errno < MY_ERR_NO_START ? strerror(errno) : 
+            (errno < MY_ERR_NO_ENUM_MAX ? sg_myTestErrnoStr[errno - MY_ERR_NO_START] : "UnknownErr");
 }
-#endif /* _MY_ERR_NO_ENUM_AND_STRING_ */
 
 #ifdef __cplusplus
  }
 #endif
 
-#endif
+#endif /* _MY_ERRNO_H_ */

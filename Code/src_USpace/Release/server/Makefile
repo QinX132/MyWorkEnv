@@ -1,23 +1,28 @@
-CC = gcc
+CC	?=	gcc
 
-WORK_ROOT = .
-UTILS_ROOT = ../myUtils
+TARGET  		= 	QinXServer
+WORK_ROOT		= 	.
+UTILS_ROOT		= 	$(WORK_ROOT)/../myUtils
+THIRT_PART_ROOT	= 	$(WORK_ROOT)/../../third_party
 
-SRC_FILE += $(WORK_ROOT)/tcpserver.c 
+SRC_FILE	+=	$(WORK_ROOT)/QinXServerMain.c  \
+				$(WORK_ROOT)/ServerProc.c  \
+				$(WORK_ROOT)/ServerClientMap.c \
+				$(WORK_ROOT)/ServerMonitor.c \
+				$(WORK_ROOT)/ServerMsgHandler.c
+OBJ_FILE	:=	$(SRC_FILE:.c=.o)
 
-OBJ_FILE := $(SRC_FILE:.c=.o)
+CFLAGS	+=	-I$(WORK_ROOT)/../include/ \
+			-I$(WORK_ROOT)/include/ \
+			-I$(THIRT_PART_ROOT)/libevent/include/ \
+			-I$(THIRT_PART_ROOT)/GmSSL/include/
+CFLAGS	+= 	-Wall -Wextra -g
 
-CFLAGS 	+= 	-I$(WORK_ROOT)/../include/ \
-			-I$(WORK_ROOT)/../common/ \
-			-I$(WORK_ROOT)/../../third_party/libevent/include/
- 
-CFLAGS 	+= 	-Wall -Wextra -g
+LDFLAGS +=	-L$(UTILS_ROOT) -lmyUtils 
+LDFLAGS +=	-L$(THIRT_PART_ROOT)/libevent/lib/ -levent \
+			-L$(THIRT_PART_ROOT)/GmSSL/lib/ -lgmssl 
+LDFLAGS +=	-pthread
 
-LDFLAGS += 	-L$(UTILS_ROOT) -lmyUtils
-LDFLAGS +=  -L$(WORK_ROOT)/../../third_party/libevent/lib/ -levent
-LDFLAGS +=  -pthread
-
-TARGET = tcpserver
 all: $(TARGET)
 
 $(TARGET): $(OBJ_FILE)

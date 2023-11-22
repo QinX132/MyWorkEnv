@@ -1,7 +1,9 @@
 tcpclient
+tcpserver
+QinXClient
 UnitTest
 libmyUtils.a
-tcpserver
+QinXServer
 *.o
 *.o.cmd
 *.ko
