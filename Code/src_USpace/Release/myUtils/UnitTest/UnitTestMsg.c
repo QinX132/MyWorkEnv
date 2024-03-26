@@ -7,6 +7,7 @@
 #define UT_MSG_HEAD_VER                                         0x10
 #define UT_MSG_CONTENT                                          "UT_MSG_CONTENT"
 #define UT_MSG_TAIL_SIGN                                        123
+#define UT_MSG_CLIENTID                                         19001
 
 static int
 _UT_Msg_PreInit(
@@ -55,6 +56,7 @@ _UT_Msg_Client(
 
     msg.Head.Type = UT_MSG_HEAD_TYPE;
     msg.Head.VerMagic = UT_MSG_HEAD_VER;
+    msg.Head.ClientId = UT_MSG_CLIENTID;
     ret = FillMsgCont(&msg, (void*)UT_MSG_CONTENT, sizeof(UT_MSG_CONTENT));
     if (ret)
     {
@@ -151,7 +153,8 @@ _UT_Msg_ForwardT(
         msg->Head.ContentLen != strlen(UT_MSG_CONTENT) + 1 ||
         msg->Head.VerMagic != UT_MSG_HEAD_VER ||
         strcmp((char*)(msg->Cont.VarLenCont), UT_MSG_CONTENT) ||
-        msg->Tail.Sign[0] != UT_MSG_TAIL_SIGN)
+        msg->Tail.Sign[0] != UT_MSG_TAIL_SIGN ||
+        msg->Head.ClientId != UT_MSG_CLIENTID)
     {
         ret = -MY_EIO;
         UTLog("Msg mismatch! Type%u ContentLen%u VerMagic%x Sign%u\n", 
