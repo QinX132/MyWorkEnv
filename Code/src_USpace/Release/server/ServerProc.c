@@ -25,6 +25,7 @@ _ServerCreateFd(
 {
     int ret = MY_SUCCESS;
     sg_ServerProcWorker.ServerFd = socket(AF_INET, SOCK_STREAM, 0);     //create socket
+    LogInfo("Open serverFd %d", sg_ServerProcWorker.ServerFd);
 
     int32_t reuseable = 1; // set port reuseable when fd closed
     (void)setsockopt(sg_ServerProcWorker.ServerFd, SOL_SOCKET, SO_REUSEADDR, &reuseable, sizeof(reuseable));    // set reuseable
@@ -55,7 +56,7 @@ _ServerCreateFd(
 CommonReturn:
     if (ret && sg_ServerProcWorker.ServerFd != -1)
     {
-        LogInfo("ret %d:%s", ret, My_StrErr(ret));
+        LogErr("ret %d:%s", ret, My_StrErr(ret));
         close(sg_ServerProcWorker.ServerFd);
         sg_ServerProcWorker.ServerFd = -1;
     }

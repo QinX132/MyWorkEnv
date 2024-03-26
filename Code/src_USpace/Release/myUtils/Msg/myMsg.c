@@ -171,10 +171,11 @@ RecvMsg(
     RetMsg->Head.Type = ntohs(RetMsg->Head.Type);
     RetMsg->Head.ContentLen = ntohl(RetMsg->Head.ContentLen);
     RetMsg->Head.SessionId = ntohl(RetMsg->Head.SessionId);
+    RetMsg->Head.ClientId = ntohl(RetMsg->Head.ClientId);
     recvLogLen += snprintf(recvLogBuff + recvLogLen, sizeof(recvLogBuff) - recvLogLen, 
-                "Recv Msg: MsgType=%u ContentLen=%u VerMagic=0x%x, SessionId=%u, IsMsgEnd=%u ", 
-                RetMsg->Head.Type, RetMsg->Head.ContentLen, RetMsg->Head.VerMagic, RetMsg->Head.SessionId,
-                RetMsg->Head.IsMsgEnd);
+                "Recv Msg: VerMagic=0x%x ClientId=%u SessionId=%u MsgType=%u ContentLen=%u IsMsgEnd=%u ", 
+                RetMsg->Head.VerMagic, RetMsg->Head.ClientId, RetMsg->Head.Type, RetMsg->Head.SessionId,
+                RetMsg->Head.ContentLen, RetMsg->Head.IsMsgEnd);
     // recv content
     currentLen = 0;
     recvLen = RetMsg->Head.ContentLen;
@@ -336,6 +337,7 @@ SendMsg(
     Msg->Head.Type = htons(Msg->Head.Type);
     Msg->Head.ContentLen = htonl(Msg->Head.ContentLen);
     Msg->Head.SessionId = htonl(Msg->Head.SessionId);
+    Msg->Head.ClientId = htonl(Msg->Head.ClientId);
     for(; currentLen < sendLen;)
     {
         sendRet = send(Fd, ((char*)&Msg->Head) + currentLen, sendLen - currentLen, 0);
@@ -366,10 +368,11 @@ SendMsg(
     Msg->Head.Type = ntohs(Msg->Head.Type);
     Msg->Head.ContentLen = ntohl(Msg->Head.ContentLen);
     Msg->Head.SessionId = ntohl(Msg->Head.SessionId);
+    Msg->Head.ClientId = ntohl(Msg->Head.ClientId);
     sendLogLen += snprintf(sendLogBuff + sendLogLen, sizeof(sendLogBuff) - sendLogLen, 
-                "Send Msg: MsgType=%u ContentLen=%u VerMagic=0x%x, SessionId=%u, IsMsgEnd=%u ", 
-                Msg->Head.Type, Msg->Head.ContentLen, Msg->Head.VerMagic, Msg->Head.SessionId,
-                Msg->Head.IsMsgEnd);
+                "Send Msg: VerMagic=0x%x ClientId=%u SessionId=%u MsgType=%u ContentLen=%u IsMsgEnd=%u ", 
+                Msg->Head.VerMagic, Msg->Head.ClientId, Msg->Head.SessionId, Msg->Head.Type,
+                Msg->Head.ContentLen, Msg->Head.IsMsgEnd);
     // send msg content
     sendLen = Msg->Head.ContentLen;
     currentLen = 0;
